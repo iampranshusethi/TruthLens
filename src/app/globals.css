@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+/*
+ * TruthLens design tokens.
+ * Warm paper surfaces, ink text, and colour reserved for meaning:
+ * mint = brand / progress, coral = risk, amber = caution, sage = fair.
+ */
+:root {
+  --paper: #faf7f2;
+  --card: #ffffff;
+  --sunken: #f3eee6;
+  --line: #ece5db;
+  --line-strong: #ddd4c7;
+
+  --ink: #1e1b18;
+  --ink-2: #4a423b;
+  --ink-3: #7a7067;
+  --ink-4: #a89e93;
+
+  --mint: #5ed6b4;
+  --mint-soft: #ddf5ec;
+  --mint-ink: #14533f;
+
+  --risk: #d4532b;
+  --risk-soft: #fce4dc;
+  --risk-ink: #8a2e14;
+
+  --caution: #c98a12;
+  --caution-soft: #fbefd5;
+  --caution-ink: #7a4e08;
+
+  --fair: #3f8f63;
+  --fair-soft: #e3f4ea;
+  --fair-ink: #1f5b3d;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-sunken: var(--sunken);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-mint: var(--mint);
+  --color-mint-soft: var(--mint-soft);
+  --color-mint-ink: var(--mint-ink);
+  --color-risk: var(--risk);
+  --color-risk-soft: var(--risk-soft);
+  --color-risk-ink: var(--risk-ink);
+  --color-caution: var(--caution);
+  --color-caution-soft: var(--caution-soft);
+  --color-caution-ink: var(--caution-ink);
+  --color-fair: var(--fair);
+  --color-fair-soft: var(--fair-soft);
+  --color-fair-ink: var(--fair-ink);
+
+  --font-sans: var(--font-geist-sans);
+  --font-display: var(--font-bricolage);
+  --font-doc: var(--font-source-serif);
+
+  --shadow-soft: 0 1px 2px rgb(30 27 24 / 0.04), 0 4px 16px rgb(30 27 24 / 0.05);
+  --shadow-lift: 0 2px 4px rgb(30 27 24 / 0.05), 0 12px 32px rgb(30 27 24 / 0.09);
+  /* Layered "product window" shadow with a hairline inner highlight. */
+  --shadow-window: 0 0 0 1px rgb(30 27 24 / 0.06), 0 1px 1px rgb(30 27 24 / 0.03), 0 8px 16px -4px rgb(30 27 24 / 0.06),
+    0 32px 64px -16px rgb(30 27 24 / 0.16), inset 0 1px 0 rgb(255 255 255 / 0.8);
+
+  --animate-marquee: marquee 48s linear infinite;
+  @keyframes marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+}
+
+/* Headline face: Bricolage at a confident weight with tight tracking.
+   In the components layer so per-element utilities can still override it. */
+@layer components {
+  .font-display {
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    line-height: 1;
+    font-optical-sizing: auto;
+  }
+}
+
+/* Highlighter swipe: the brand's emphasis, echoing highlighted clauses. */
+.hl {
+  background: linear-gradient(transparent 58%, #bdefdd 58%, #bdefdd 92%, transparent 92%);
+  padding: 0 0.12em;
+  margin: 0 -0.04em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.hl-dark {
+  background: linear-gradient(transparent 60%, rgb(94 214 180 / 0.38) 60%, rgb(94 214 180 / 0.38) 92%, transparent 92%);
+  padding: 0 0.12em;
+  margin: 0 -0.04em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* Fine dotted grid, faded out towards the edges. */
+.bg-dots {
+  background-image: radial-gradient(rgb(30 27 24 / 0.09) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%);
+}
+
+/* Soft edge fade for horizontally scrolling rows. */
+.fade-x {
+  mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+::selection {
+  background: var(--mint-soft);
+  color: var(--mint-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
