@@ -77,7 +77,7 @@ export function HeroDemo() {
 
         <div className="grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
           {/* Document */}
-          <div className="relative overflow-hidden border-line px-6 py-6 sm:px-9 sm:py-8 md:border-r">
+          <div className="relative overflow-hidden border-line px-6 pt-6 pb-28 sm:px-9 sm:pt-8 md:border-r md:pb-8">
             <p className="text-[11px] text-ink-3">{sampleRental.fileName}</p>
             <p className="mt-1 font-doc text-xl font-medium tracking-tight">{sampleRental.title}</p>
             <div className="mt-5 space-y-4">
@@ -95,6 +95,37 @@ export function HeroDemo() {
                   </p>
                 </div>
               ))}
+            </div>
+
+            {/* Phones: the findings panel doesn't fit, so the latest finding (then the verdict) floats over the page. */}
+            <div className="pointer-events-none absolute inset-x-4 bottom-4 z-10 md:hidden">
+              <AnimatePresence mode="wait">
+                {showVerdict ? (
+                  <motion.div
+                    key="verdict"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="rounded-xl bg-ink p-3.5 text-paper shadow-lift"
+                  >
+                    <p className="font-display text-[17px] leading-tight">{sampleRental.verdict.headline}</p>
+                  </motion.div>
+                ) : shownFindings[0] ? (
+                  <motion.div
+                    key={`${cycle}-${shownFindings[0].id}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    className="rounded-xl border border-line bg-card p-3 shadow-lift"
+                  >
+                    <span className="flex items-center gap-2 text-[11px] text-ink-3">
+                      <span className={`h-1.5 w-1.5 rounded-full ${SEVERITY[shownFindings[0].severity].dot}`} />
+                      {SEVERITY[shownFindings[0].severity].label}
+                    </span>
+                    <p className="mt-1 text-[13px] leading-snug">{shownFindings[0].title}</p>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
             </div>
 
             {/* Scan line */}

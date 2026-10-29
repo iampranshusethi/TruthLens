@@ -8,19 +8,20 @@ TruthLens reads rental agreements, insurance policies and everyday contracts for
 
 ## What it does
 
-- **Review a document.** Drop in a PDF, Word or text file. It's read on your device, personal details (names, phone, PAN, Aadhaar, account numbers) are hidden from the AI, and the review streams in clause by clause: risks first, then cautions, then fair terms.
+- **Review a document.** Drop in a PDF, Word file or a photo of the paper copy. Personal details (names, phone, PAN, Aadhaar, account numbers) are hidden from the AI, and the review streams in clause by clause: risks first, then cautions, then fair terms.
 - **Every point is traced to the document.** Each finding highlights its clause. Quotes that can't be found word for word are thrown away.
 - **Knows what's normal.** Findings say what's typical in India, so you know what's worth pushing back on.
 - **Tells you what to say.** Problem clauses come with fairer wording and a polite message for your landlord, insurer or employer.
+- **Download a PDF report** to share with family or a lawyer before signing.
 - **Compare two or three options.** Policies, flats or job offers are lined up topic by topic and ranked on what matters to you. Moving a slider re-ranks them instantly.
 - **Ask follow-up questions.** Answers come only from your document and cite the clause they rely on; click a citation to jump to it.
-- **History without an account.** Reviews are saved in your browser and reopen instantly.
+- **History.** Reviews are saved in your browser, or in your account if you sign in with Google.
 
-## Running it
+## Running it locally
 
 ```bash
 npm install
-cp .env.example .env.local   # add a free Gemini and/or Groq key
+cp .env.example .env.local   # add your keys (see Setup below)
 npm run dev
 ```
 
@@ -32,9 +33,24 @@ npm run lint
 npm run build
 ```
 
+## Setup (one time)
+
+Everything is free-tier. Each step only needs doing once.
+
+1. **Gemini key (required for real reviews).** Go to [Google AI Studio](https://aistudio.google.com/apikey), sign in, click *Create API key*, and paste it into `.env.local` as `GEMINI_API_KEY=...`.
+2. **Groq key (recommended backup).** Go to [console.groq.com/keys](https://console.groq.com/keys), create a key, and add `GROQ_API_KEY=...`. If Gemini is busy or over its daily limit, reviews switch to Groq automatically.
+3. **Google sign-in (optional).**
+   1. Create a free project at [supabase.com](https://supabase.com).
+   2. In the project, open *SQL Editor*, paste the contents of [`supabase.sql`](supabase.sql) and click *Run*.
+   3. In *Project Settings → API*, copy the Project URL and the publishable (anon) key into `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+   4. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an *OAuth client ID* (type: Web application). Add the redirect URL that Supabase shows under *Authentication → Sign In / Providers → Google*.
+   5. Back in Supabase, enable the Google provider and paste the Google client ID and secret.
+   6. Under *Authentication → URL Configuration*, set the Site URL to your deployed address and add `http://localhost:3000/**` and `https://<your-site>/**` to the redirect URLs.
+4. **Deploy on Vercel.** Push the repo to GitHub, then *Add New Project* on [vercel.com](https://vercel.com) and import it. Add the same environment variables from `.env.local`, plus `NEXT_PUBLIC_SITE_URL=https://<your-site>` so link previews use the right address.
+
 ## Stack
 
-Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · Motion · zod · pdf.js · mammoth · Vitest. AI: Google Gemini (free tier) with Groq as fallback.
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · Motion · zod · pdf.js · mammoth · Supabase · Vitest. AI: Google Gemini (free tier) with Groq as fallback.
 
 ## How it's built
 

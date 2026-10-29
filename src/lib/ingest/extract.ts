@@ -2,10 +2,12 @@
 
 /**
  * Turns an uploaded file into plain text, in the browser (decisions.md D8).
- * The original file never leaves the device.
+ * Text files never leave the device. Scans and photos have no text layer, so
+ * their pages are sent one at a time to be read by the AI (decisions.md D25).
  */
 
-export type Extracted = { text: string; pages: number };
+export type Extracted = { text: string; pages: number; scanned?: boolean };
+export type Progress = (message: string) => void;
 
 export class ExtractError extends Error {
   constructor(
@@ -18,33 +20,40 @@ export class ExtractError extends Error {
 
 const MAX_BYTES = 15 * 1024 * 1024;
 
-export const ACCEPTED = ".pdf,.docx,.txt,.md";
+export const ACCEPTED = ".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.webp";
+const MAX_SCAN_PAGES = 12;
 
-export async function extractText(file: File): Promise<Extracted> {
+export async function extractText(file: File, onProgress: Progress = () => {}): Promise<Extracted> {
   if (file.size > MAX_BYTES) {
     throw new ExtractError("too_big", "That file is over 15 MB. Try a smaller copy or just the agreement pages.");
   }
   const name = file.name.toLowerCase();
   let out: Extracted;
-  if (name.endsWith(".pdf") || file.type === "application/pdf") out = await fromPdf(file);
+  if (name.endsWith(".pdf") || file.type === "application/pdf") out = await fromPdf(file, onProgress);
   else if (name.endsWith(".docx")) out = await fromDocx(file);
   else if (name.endsWith(".txt") || name.endsWith(".md") || file.type.startsWith("text/")) {
     const text = await file.text();
     out = { text, pages: Math.max(1, Math.round(text.length / 3000)) };
   } else if (file.type.startsWith("image/")) {
-    throw new ExtractError(
-      "unsupported",
-      "Photos aren't supported yet. If you have the agreement as a PDF or Word file, use that instead.",
-    );
+    onProgress("Reading your photo…");
+    const bitmap = await createImageBitmap(file).catch(() => {
+      throw new ExtractError("unreadable", "That image couldn't be opened. Try a JPG or PNG.");
+    });
+    const canvas = document.createElement("canvas");
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    out = { text: await readPageImage(canvas), pages: 1, scanned: true };
   } else {
-    throw new ExtractError("unsupported", "TruthLens reads PDF, Word (.docx) and text files.");
+    throw new ExtractError("unsupported", "TruthLens reads PDF, Word (.docx), text files and photos.");
   }
 
   if (!out.text.trim()) throw new ExtractError("empty", "That file doesn't seem to have any text in it.");
   return out;
 }
 
-async function fromPdf(file: File): Promise<Extracted> {
+async function fromPdf(file: File, onProgress: Progress): Promise<Extracted> {
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -85,14 +94,49 @@ async function fromPdf(file: File): Promise<Extracted> {
     text += "\n\n";
   }
 
-  // A scanned PDF has pages but almost no text layer.
+  // A scanned PDF has pages but almost no text layer: read each page image instead.
   if (text.replace(/\s/g, "").length < 40 * doc.numPages) {
-    throw new ExtractError(
-      "scanned",
-      "This PDF looks like a scan, so there's no text to read. Reading scans is coming soon; a text PDF or Word file works now.",
-    );
+    if (doc.numPages > MAX_SCAN_PAGES) {
+      throw new ExtractError(
+        "too_big",
+        `This scan has ${doc.numPages} pages. TruthLens reads scans of up to ${MAX_SCAN_PAGES} pages, so try just the agreement pages.`,
+      );
+    }
+    let scanned = "";
+    for (let p = 1; p <= doc.numPages; p++) {
+      onProgress(`Reading scanned page ${p} of ${doc.numPages}…`);
+      const page = await doc.getPage(p);
+      const base = page.getViewport({ scale: 1 });
+      const viewport = page.getViewport({ scale: Math.min(2.5, 1400 / base.width) });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
+      await page.render({ canvas, canvasContext: canvas.getContext("2d")!, viewport }).promise;
+      scanned += `${await readPageImage(canvas)}\n\n`;
+    }
+    return { text: scanned, pages: doc.numPages, scanned: true };
   }
   return { text, pages: doc.numPages };
+}
+
+/** Sends one page image to be read by the AI and returns its text. */
+async function readPageImage(canvas: HTMLCanvasElement): Promise<string> {
+  const image = canvas.toDataURL("image/jpeg", 0.78).split(",")[1];
+  const res = await fetch("/api/ocr", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ image, mime: "image/jpeg" }),
+  }).catch(() => null);
+  if (!res) throw new ExtractError("unreadable", "You seem to be offline. Check your connection and try again.");
+  const json = await res.json().catch(() => null);
+  if (res.ok) return json?.text ?? "";
+  if (json?.code === "not_configured") {
+    throw new ExtractError(
+      "scanned",
+      "This looks like a scan or photo. Reading those needs the AI to be switched on, which it isn't yet. A text PDF or Word file works now.",
+    );
+  }
+  throw new ExtractError("unreadable", json?.message ?? "The scan couldn't be read. Try again in a moment.");
 }
 
 async function fromDocx(file: File): Promise<Extracted> {

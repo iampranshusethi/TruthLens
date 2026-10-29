@@ -16,6 +16,12 @@ How code execution moves through TruthLens: the entry points, the order things r
 | `src/app/api/review/route.ts` | **Backend entry point** for reviews. Streams events as NDJSON. |
 | `src/app/api/compare/route.ts` | Backend entry point for comparisons. |
 | `src/app/api/chat/route.ts` | Backend entry point for follow-up questions. Streams plain text. |
+| `src/app/api/ocr/route.ts` | Reads one scanned page image with Gemini. |
+| `src/app/opengraph-image.tsx`, `icon.svg`, `not-found.tsx` | Share preview card, favicon, 404 page. |
+| `src/lib/cloud.ts` | Optional Supabase client: save, list, load and delete items in the user's account. |
+| `src/components/auth.tsx`, `user-menu.tsx` | Google sign-in state and the header's account menu. |
+| `src/components/review/report.tsx` | Print-only report layout behind "Download PDF report". |
+| `supabase.sql` | One-time database setup for cloud history. |
 | `src/lib/ingest/extract.ts` | Browser: PDF (pdf.js), Word (mammoth) and text files → plain text. |
 | `src/lib/ingest/clauses.ts` | Text → numbered clauses with stable ids (D7). |
 | `src/lib/ingest/kind.ts` | Guesses rental / insurance / contract; per-type priorities and labels. |
@@ -99,6 +105,38 @@ ChatPanel (shown under a finished review)
   → chatPrompt → streamWithFallback → plain text streamed back
 Browser: unmask as text arrives → "(clause 4)" citations become buttons
   → click → ReviewScreen.cite(): scroll to the clause and flash it
+```
+
+## Flow 5: scanned PDF or photo
+
+```
+extractText(file, onProgress)                    (ingest/extract.ts)
+  PDF with almost no text layer, or an image
+  → each page drawn onto a canvas (≤1400 px) → JPEG base64
+  → POST /api/ocr {image}  one page at a time     (app/api/ocr/route.ts → Gemini generateContent)
+  → onProgress("Reading scanned page 3 of 8…")    (drop-zone.tsx / compare-intake.tsx show it)
+  → joined text → the normal Flow 1 (review is marked scanned: "Read from a scan")
+No Gemini key → 503 not_configured → a clear message in the upload bar.
+```
+
+## Flow 6: Google sign-in and cloud history (only when Supabase env vars are set)
+
+```
+AuthProvider (components/auth.tsx, in layout.tsx) → supabase() client (lib/cloud.ts), PKCE flow
+Sign in → signInWithOAuth(google) → Google → back to /history → session restored from the URL
+  → on SIGNED_IN: every finished local review and comparison is upserted (saveToCloud)
+Review/comparison finishes → saveReview/saveComparison (browser) + saveToCloud (account)
+/review/<id> not on this device → loadFromCloud → saved locally → shown
+History → local items + listCloud(), de-duplicated by id; delete removes both copies
+Database: supabase.sql (saved_items table, row-level security: users only see their own rows)
+```
+
+## Flow 7: PDF report
+
+```
+Verdict card "Download PDF report" → printReport(title)   (components/review/report.tsx)
+  → tab title set to "TruthLens review - <title>" (the default PDF file name) → window.print()
+  → print CSS hides the app (print:hidden) and shows <Report> (print:block) → "Save as PDF"
 ```
 
 ## Errors

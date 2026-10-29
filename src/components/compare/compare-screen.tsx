@@ -117,7 +117,7 @@ export function CompareScreen({
         </div>
       </header>
 
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="popLayout">
         {state.error && !ready ? (
           <motion.div key="error" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-md">
             <ErrorCard

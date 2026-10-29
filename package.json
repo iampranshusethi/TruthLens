@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
     "geist": "^1.8.2",
     "lucide-react": "^1.63.0",
     "mammoth": "^1.13.0",

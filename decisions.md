@@ -124,12 +124,32 @@ A log of meaningful decisions made while building TruthLens v2, with the reasoni
 **Why:** v1's chat could drift into general answers. Citations let the reader check every claim in one click, and re-masking keeps personal details out of the conversation history sent to the model.
 **Trade-off accepted:** The model may occasionally cite in a different format, which then shows as plain text rather than a button.
 
-## D25. Scanned PDFs and photos are refused clearly, for now
-**Decision:** A PDF with almost no text layer, or an image, gets a plain message explaining that scans aren't supported yet and what to upload instead.
-**Why:** Reading scans needs an image model call per page, which is a bigger step for the free tier. A clear message beats a silent empty review.
-**Trade-off accepted:** People holding only a paper copy can't use TruthLens yet. Planned next: send page images to Gemini, which can read them.
+## D25. Scans and photos are read by Gemini, page by page
+**Decision:** A PDF with almost no text layer, or a photo, is rendered to page images in the browser (pdf.js onto a canvas, at most 1400 px wide, JPEG) and sent one page at a time to `/api/ocr`, which asks Gemini to transcribe it exactly. The text then goes through the normal flow. Scans are limited to 12 pages, and the review is labelled "Read from a scan".
+**Why:** In India many rental agreements exist only on stamp paper, so a phone photo is often the only copy people have. One page per request keeps each upload far below Vercel's 4.5 MB body limit and lets the screen show "Reading scanned page 3 of 8".
+**Trade-off accepted:** Page images reach the AI before personal details can be masked (masking needs text). The label and its tooltip say so. Without a Gemini key, scans get a clear message instead.
 
 ## D26. Unit tests for the parts that must never be wrong
 **Decision:** Vitest covers clause splitting, document-type detection, masking (including round trips), quote verification, NDJSON parsing and the review event pipeline (verified, dropped, de-duplicated and fallback cases).
 **Why:** These are the trust guarantees of the product. They are pure functions, so they are cheap to test thoroughly.
 **Trade-off accepted:** UI behaviour is checked by hand in the browser rather than with end-to-end tests.
+
+## D27. The PDF report is the browser's own "Save as PDF"
+**Decision:** A finished review has a "Download PDF report" button. A print-only layout (verdict, every problem with its quote, plain explanation, what's normal, fairer wording and message, then fair terms) is hidden on screen; printing hides the app and shows only that layout.
+**Why:** No PDF library to ship, text stays selectable and searchable, and it works offline on every device. People forward the report to family or a lawyer before signing.
+**Trade-off accepted:** The user picks "Save as PDF" in the print dialog, one extra click compared with a direct download.
+
+## D28. Google sign-in with Supabase, client-side only
+**Decision:** Sign-in uses Supabase Auth's Google provider with the PKCE flow entirely in the browser. Finished reviews and comparisons are upserted into one `saved_items` table protected by row-level security (each user sees only their rows). Signing in uploads earlier local reviews; deleting removes both copies. Without the two public env vars the feature switches itself off.
+**Why:** No server session code or middleware to maintain; the database itself enforces who can read what. One table with a JSON column keeps the schema trivial while the data shape still evolves.
+**Trade-off accepted:** Cloud copies include the document text (needed to reopen a review anywhere); History says so plainly. Supabase's free tier pauses after a week of inactivity, which a deployed project must handle.
+
+## D29. Important content never waits for an animation
+**Decision:** Swaps between states (progress → verdict, hint → error, loading → results) use Motion's "popLayout" mode, so the new content appears at once while the old one fades out.
+**Why:** Testing showed that with "wait" mode, an error message or the verdict could be held back until the previous element finished animating, which never happens when a browser throttles animations (background tabs, slow phones). Animation should decorate state changes, not gate them.
+**Trade-off accepted:** For a moment both elements can overlap while one fades.
+
+## D30. Sharing and identity
+**Decision:** A share image (`opengraph-image.tsx`, prerendered at build time with Geist) and an SVG favicon of the lens mark replace the framework defaults; unknown URLs get a branded 404.
+**Why:** The link will be posted on LinkedIn; the preview card is most people's first impression.
+**Trade-off accepted:** None meaningful.

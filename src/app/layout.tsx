@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import localFont from "next/font/local";
+import { AuthProvider } from "@/components/auth";
 import { SiteHeader } from "@/components/site-header";
 import { ToastProvider } from "@/components/toast";
 import "./globals.css";
@@ -22,6 +23,7 @@ const sourceSerif = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: {
     default: "TruthLens: know what you're signing",
     template: "%s · TruthLens",
@@ -38,8 +40,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="flex min-h-full flex-col font-sans">
         <ToastProvider>
-          <SiteHeader />
-          <div className="flex flex-1 flex-col">{children}</div>
+          <AuthProvider>
+            <SiteHeader />
+            <div className="flex flex-1 flex-col">{children}</div>
+          </AuthProvider>
         </ToastProvider>
       </body>
     </html>

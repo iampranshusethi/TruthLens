@@ -1,10 +1,11 @@
 "use client";
 
-import { FileQuestion } from "lucide-react";
+import { FileQuestion, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { CompareScreen } from "@/components/compare/compare-screen";
+import { cloudEnabled, loadFromCloud, saveToCloud } from "@/lib/cloud";
 import { saveComparison, type StoredComparison, storedComparisonJson } from "@/lib/compare-store";
 import { PRIORITIES } from "@/lib/ingest/kind";
 import { maskedCount } from "@/lib/ingest/mask";
@@ -18,13 +19,37 @@ const DEFAULT_WEIGHTS = [3, 3, 2, 2, 1, 1];
 export function LiveCompare() {
   const { id } = useParams<{ id: string }>();
   const raw = useSyncExternalStore(noSubscribe, () => storedComparisonJson(id), () => "server");
-  const stored = useMemo<StoredComparison | null | undefined>(
+  const local = useMemo<StoredComparison | null | undefined>(
     () => (raw === "server" ? undefined : raw ? (JSON.parse(raw) as StoredComparison) : null),
     [raw],
   );
 
-  if (stored === undefined) return <main className="flex-1" />;
-  if (stored === null) {
+  // Not on this device: a signed-in user may have it in their account.
+  const needsCloud = local === null && cloudEnabled();
+  const [cloud, setCloud] = useState<StoredComparison | null | undefined>(undefined);
+  useEffect(() => {
+    if (!needsCloud) return;
+    let live = true;
+    loadFromCloud(id, "compare").then((c) => {
+      if (!live) return;
+      if (c) saveComparison(c as StoredComparison);
+      setCloud((c as StoredComparison) ?? null);
+    });
+    return () => {
+      live = false;
+    };
+  }, [id, needsCloud]);
+
+  const fetching = needsCloud && cloud === undefined;
+  if (local === undefined || fetching) {
+    return (
+      <main className="flex flex-1 items-center justify-center">
+        {fetching && <LoaderCircle size={22} className="animate-spin text-ink-4" />}
+      </main>
+    );
+  }
+  const stored = local ?? cloud;
+  if (!stored) {
     return (
       <main className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center px-4 pt-20 pb-16 text-center sm:px-6">
         <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sunken text-ink-3">
@@ -60,7 +85,9 @@ export function LiveCompare() {
         return () => {};
       }}
       onFinished={(result) => {
-        if (!stored.result) saveComparison({ ...stored, result });
+        if (stored.result) return;
+        saveComparison({ ...stored, result });
+        saveToCloud("compare", { ...stored, result });
       }}
     />
   );

@@ -7,7 +7,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { ACCEPTED, ExtractError, extractText } from "@/lib/ingest/extract";
 import { createReview, saveReview, TooLongError } from "@/lib/review-store";
 
-type Status = { state: "idle" } | { state: "reading"; name: string } | { state: "error"; message: string };
+type Status = { state: "idle" } | { state: "reading"; label: string } | { state: "error"; message: string };
 
 /**
  * Upload bar. The whole window accepts drops, so users don't have to aim for the bar.
@@ -22,10 +22,10 @@ export function DropZone() {
 
   const handle = async (file: File | undefined) => {
     if (!file || status.state === "reading") return;
-    setStatus({ state: "reading", name: file.name });
+    setStatus({ state: "reading", label: `Reading ${file.name}…` });
     try {
-      const { text, pages } = await extractText(file);
-      const review = createReview(file.name, text, pages);
+      const { text, pages, scanned } = await extractText(file, (label) => setStatus({ state: "reading", label }));
+      const review = createReview(file.name, text, pages, scanned);
       saveReview(review);
       router.push(`/review/${review.id}`);
     } catch (e) {
@@ -88,11 +88,11 @@ export function DropZone() {
             className="min-w-0 flex-1 truncate py-2 text-left text-[15px] text-ink-3"
           >
             {status.state === "reading" ? (
-              <span className="text-ink-2">Reading {status.name}…</span>
+              <span className="text-ink-2">{status.label}</span>
             ) : (
               <>
                 <span className="hidden sm:inline">Drop a rental agreement, policy or contract here</span>
-                <span className="sm:hidden">Drop or choose a document</span>
+                <span className="sm:hidden">Choose a document</span>
               </>
             )}
           </button>
@@ -106,7 +106,7 @@ export function DropZone() {
           </button>
         </div>
       </div>
-      <AnimatePresence mode="wait" initial={false}>
+      <AnimatePresence mode="popLayout" initial={false}>
         {status.state === "error" ? (
           <motion.p
             key="error"
@@ -128,7 +128,7 @@ export function DropZone() {
             className="mt-3 flex items-center justify-center gap-1.5 text-xs text-ink-3"
           >
             <Lock size={12} />
-            PDF, Word or text · read on your device, personal details hidden from the AI
+            PDF, Word or photo · personal details hidden from the AI
           </motion.p>
         )}
       </AnimatePresence>

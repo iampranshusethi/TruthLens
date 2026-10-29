@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { guessTitle, splitClauses } from "@/lib/ingest/clauses";
 import { detectKind } from "@/lib/ingest/kind";
-import { mask, unmask, unmaskDeep } from "@/lib/ingest/mask";
+import { mask, remask, unmask, unmaskDeep } from "@/lib/ingest/mask";
 import { sampleInsurance } from "@/lib/samples/insurance";
 import { sampleRental } from "@/lib/samples/rental";
 import { locateQuote } from "@/lib/verify";
@@ -95,6 +95,12 @@ describe("mask", () => {
   it("round-trips through unmask", () => {
     expect(unmask(masked, map)).toBe(text);
     expect(unmaskDeep({ a: [masked] }, map)).toEqual({ a: [text] });
+  });
+
+  it("masks earlier chat turns again with the same placeholders", () => {
+    expect(remask("Ask R. Narayan about the deposit, or call +91 98450 12345.", map)).toBe(
+      "Ask [NAME 1] about the deposit, or call [PHONE 1].",
+    );
   });
 });
 

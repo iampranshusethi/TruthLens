@@ -26,9 +26,33 @@ export function storedComparisonJson(id: string): string | null {
   }
 }
 
+const INDEX = "tl.comparisons";
+
 export function saveComparison(c: StoredComparison) {
   try {
     localStorage.setItem(KEY(c.id), JSON.stringify(c));
+    const ids = (JSON.parse(localStorage.getItem(INDEX) ?? "[]") as string[]).filter((x) => x !== c.id);
+    localStorage.setItem(INDEX, JSON.stringify([c.id, ...ids].slice(0, 30)));
+  } catch {}
+}
+
+export function listComparisons(): StoredComparison[] {
+  try {
+    const ids = JSON.parse(localStorage.getItem(INDEX) ?? "[]") as string[];
+    return ids.flatMap((id) => {
+      const raw = localStorage.getItem(KEY(id));
+      return raw ? [JSON.parse(raw) as StoredComparison] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function deleteComparison(id: string) {
+  try {
+    localStorage.removeItem(KEY(id));
+    const ids = (JSON.parse(localStorage.getItem(INDEX) ?? "[]") as string[]).filter((x) => x !== id);
+    localStorage.setItem(INDEX, JSON.stringify(ids));
   } catch {}
 }
 

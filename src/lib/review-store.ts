@@ -18,6 +18,8 @@ export type StoredReview = {
   clauses: Clause[];
   maskMap: MaskMap;
   createdAt: number;
+  /** Read from page images by the AI rather than from a text layer. */
+  scanned?: boolean;
   result?: {
     title: string;
     otherParty: string;
@@ -84,7 +86,7 @@ export function deleteReview(id: string) {
 export class TooLongError extends Error {}
 
 /** Builds a review from extracted text: clauses, document type and the mask for personal details. */
-export function createReview(fileName: string, text: string, pages: number): StoredReview {
+export function createReview(fileName: string, text: string, pages: number, scanned = false): StoredReview {
   const clauses = splitClauses(text);
   const total = clauses.reduce((n, c) => n + c.text.length, 0);
   if (total > MAX_CHARS) {
@@ -103,6 +105,7 @@ export function createReview(fileName: string, text: string, pages: number): Sto
     clauses,
     maskMap: map,
     createdAt: Date.now(),
+    scanned,
   };
 }
 

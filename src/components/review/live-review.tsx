@@ -1,11 +1,12 @@
 "use client";
 
-import { FileQuestion } from "lucide-react";
+import { FileQuestion, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { DropZone } from "@/components/drop-zone";
 import { type ReviewState, ReviewScreen } from "@/components/review/review-screen";
+import { cloudEnabled, loadFromCloud, saveToCloud } from "@/lib/cloud";
 import { maskedCount } from "@/lib/ingest/mask";
 import { replayStored, runLiveReview } from "@/lib/live-review";
 import { saveReview, type StoredReview, storedJson } from "@/lib/review-store";
@@ -15,22 +16,41 @@ const noSubscribe = () => () => {};
 export function LiveReview() {
   const { id } = useParams<{ id: string }>();
   // Read once from this browser's storage; "server" while rendering on the server.
-  const raw = useSyncExternalStore(
-    noSubscribe,
-    () => storedJson(id),
-    () => "server",
-  );
-  const review = useMemo<StoredReview | null | undefined>(
+  const raw = useSyncExternalStore(noSubscribe, () => storedJson(id), () => "server");
+  const local = useMemo<StoredReview | null | undefined>(
     () => (raw === "server" ? undefined : raw ? (JSON.parse(raw) as StoredReview) : null),
     [raw],
   );
+  // Not on this device: a signed-in user may have it in their account.
+  const needsCloud = local === null && cloudEnabled();
+  const [cloud, setCloud] = useState<StoredReview | null | undefined>(undefined); // undefined = not fetched yet
+  useEffect(() => {
+    if (!needsCloud) return;
+    let live = true;
+    loadFromCloud(id, "review").then((r) => {
+      if (!live) return;
+      if (r) saveReview(r as StoredReview);
+      setCloud((r as StoredReview) ?? null);
+    });
+    return () => {
+      live = false;
+    };
+  }, [id, needsCloud]);
 
-  if (review === undefined) return <main className="flex-1" />;
-  if (review === null) return <NotFound />;
+  const fetching = needsCloud && cloud === undefined;
+  if (local === undefined || fetching) {
+    return (
+      <main className="flex flex-1 items-center justify-center">
+        {fetching && <LoaderCircle size={22} className="animate-spin text-ink-4" />}
+      </main>
+    );
+  }
+  const review = local ?? cloud;
+  if (!review) return <NotFound />;
 
   const save = (state: ReviewState, seconds: number) => {
     if (review.result || !state.meta || !state.verdict || state.error) return;
-    saveReview({
+    const done: StoredReview = {
       ...review,
       title: state.meta.title,
       result: {
@@ -43,7 +63,9 @@ export function LiveReview() {
         dropped: state.dropped,
         seconds,
       },
-    });
+    };
+    saveReview(done);
+    saveToCloud("review", done);
   };
 
   return (
@@ -65,7 +87,8 @@ function NotFound() {
       </span>
       <h1 className="mt-5 font-display text-[2rem] leading-tight">This review isn&apos;t on this device</h1>
       <p className="mt-3 text-ink-3">
-        Reviews are kept in the browser they were made in. Upload the document again to review it here.
+        Reviews are kept in the browser they were made in, or in your account if you were signed in. Upload the document
+        again to review it here.
       </p>
       <div className="mt-8 w-full">
         <DropZone />

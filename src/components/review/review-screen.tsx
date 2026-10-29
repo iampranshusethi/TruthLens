@@ -1,10 +1,11 @@
 "use client";
 
-import { CloudOff, FileText, FlaskConical, LockKeyhole, RotateCcw } from "lucide-react";
+import { CloudOff, FileDown, FileText, FlaskConical, LockKeyhole, RotateCcw, ScanText } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { ChatPanel } from "@/components/review/chat-panel";
+import { printReport, Report } from "@/components/review/report";
 import { FindingDetail } from "@/components/review/finding-detail";
 import { type Filter, FindingList } from "@/components/review/finding-list";
 import { HighlightedText } from "@/components/review/highlighted-text";
@@ -35,6 +36,8 @@ export type ReviewSubject = {
   isSample?: boolean;
   /** Personal details masked before analysis (decisions.md D9). */
   hiddenDetails?: number;
+  /** Text came from page images read by the AI (decisions.md D25). */
+  scanned?: boolean;
 };
 
 export type ReviewState = {
@@ -177,7 +180,19 @@ export function ReviewScreen({
   };
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 pt-8 pb-16 sm:px-6 lg:pt-12">
+    <main className="mx-auto w-full max-w-6xl px-4 pt-8 pb-16 sm:px-6 lg:pt-12 print:max-w-none print:p-0">
+      {state.done && state.verdict && (
+        <Report
+          title={title}
+          fileName={subject.fileName}
+          kind={kind}
+          otherParty={otherParty}
+          clauses={subject.clauses}
+          findings={state.findings}
+          verdict={state.verdict}
+        />
+      )}
+      <div className="print:hidden">
       <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-medium tracking-[0.14em] text-mint-ink uppercase">{KIND_LABEL[kind]} review</p>
@@ -199,6 +214,14 @@ export function ReviewScreen({
             >
               <LockKeyhole size={12} /> {subject.hiddenDetails} personal{" "}
               {subject.hiddenDetails === 1 ? "detail" : "details"} hidden from the AI
+            </span>
+          )}
+          {subject.scanned && (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5"
+              title="This document had no text layer, so its page images were read by the AI before personal details could be hidden."
+            >
+              <ScanText size={12} /> Read from a scan
             </span>
           )}
           {state.meta?.engine === "demo" && (
@@ -266,7 +289,7 @@ export function ReviewScreen({
             ) : null}
 
             <div className={active ? "space-y-4 lg:hidden" : "space-y-4"}>
-              <AnimatePresence mode="wait" initial={false}>
+              <AnimatePresence mode="popLayout" initial={false}>
                 {state.error ? (
                   <motion.div key="error" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
                     <ErrorCard
@@ -309,6 +332,13 @@ export function ReviewScreen({
                     <div className="relative mt-4">
                       <CompletedLine clauseCount={subject.clauses.length} seconds={took} dropped={state.dropped} />
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => printReport(title)}
+                      className="relative mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-paper px-4 py-2.5 text-sm font-medium text-ink transition-transform active:scale-[0.98]"
+                    >
+                      <FileDown size={16} /> Download PDF report
+                    </button>
                   </motion.div>
                 ) : (
                   <motion.div key="progress" exit={{ opacity: 0, y: -8 }}>
@@ -378,6 +408,8 @@ export function ReviewScreen({
             </div>
           </div>
         </aside>
+      </div>
+
       </div>
 
       {/* Mobile: finding detail as a bottom sheet */}

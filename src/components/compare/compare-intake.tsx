@@ -9,7 +9,7 @@ import { createComparison, saveComparison } from "@/lib/compare-store";
 import { ACCEPTED, ExtractError, extractText } from "@/lib/ingest/extract";
 
 type Slot =
-  | { key: string; name: string; state: "reading" }
+  | { key: string; name: string; state: "reading"; label?: string }
   | { key: string; name: string; state: "ready"; text: string; pages: number }
   | { key: string; name: string; state: "error"; message: string };
 
@@ -31,7 +31,9 @@ export function CompareIntake() {
     for (const file of picked) {
       const key = crypto.randomUUID();
       setSlots((s) => [...s, { key, name: file.name, state: "reading" }]);
-      extractText(file)
+      extractText(file, (label) =>
+        setSlots((s) => s.map((x) => (x.key === key && x.state === "reading" ? { ...x, label } : x))),
+      )
         .then(({ text, pages }) =>
           setSlots((s) => s.map((x) => (x.key === key ? { key, name: file.name, state: "ready", text, pages } : x))),
         )
@@ -92,11 +94,11 @@ export function CompareIntake() {
                 key={`empty-${i}`}
                 type="button"
                 onClick={() => input.current?.click()}
-                className="group flex min-h-40 flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-line-strong bg-card/60 p-5 text-center transition-colors hover:border-mint hover:bg-mint-soft/30"
+                className="group flex min-h-16 items-center gap-3 rounded-3xl border-2 border-dashed border-line-strong bg-card/60 px-5 py-4 text-left transition-colors hover:border-mint hover:bg-mint-soft/30 sm:min-h-40 sm:flex-col sm:justify-center sm:gap-2 sm:text-center"
               >
                 <FilePlus2 size={22} className="text-ink-4 transition-colors group-hover:text-mint-ink" />
                 <span className="text-sm text-ink-2">{i < 2 ? `Document ${i + 1}` : "Optional third"}</span>
-                <span className="text-xs text-ink-4">PDF, Word or text</span>
+                <span className="ml-auto text-xs text-ink-4 sm:ml-0">PDF, Word or photo</span>
               </button>
             );
           }
@@ -105,7 +107,7 @@ export function CompareIntake() {
               key={slot.key}
               initial={{ opacity: 0, scale: 0.97 }}
               animate={{ opacity: 1, scale: 1 }}
-              className={`relative flex min-h-40 flex-col justify-between rounded-3xl border bg-card p-5 shadow-soft ${
+              className={`relative flex min-h-24 flex-col justify-between rounded-3xl border bg-card p-5 shadow-soft sm:min-h-40 ${
                 slot.state === "error" ? "border-risk/40" : "border-line"
               }`}
             >
@@ -141,7 +143,7 @@ export function CompareIntake() {
                     ? `Read · ${slot.pages} ${slot.pages === 1 ? "page" : "pages"}`
                     : slot.state === "error"
                       ? slot.message
-                      : "Reading…"}
+                      : slot.label ?? "Reading…"}
                 </p>
               </div>
             </motion.div>
@@ -159,7 +161,7 @@ export function CompareIntake() {
           Compare {ready.length >= 2 ? ready.length : ""} documents
           <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
         </button>
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="popLayout">
           {hint ? (
             <motion.p key="hint" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-sm text-caution-ink">
               {hint}

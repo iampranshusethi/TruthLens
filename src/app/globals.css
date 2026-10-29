@@ -103,6 +103,16 @@
   -webkit-box-decoration-break: clone;
 }
 
+/* Printing a review produces the report layout only (components/review/report.tsx). */
+@page {
+  margin: 16mm 15mm;
+}
+@media print {
+  body {
+    background: #fff;
+  }
+}
+
 /* Fine dotted grid, faded out towards the edges. */
 .bg-dots {
   background-image: radial-gradient(rgb(30 27 24 / 0.09) 1px, transparent 1px);
