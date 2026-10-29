@@ -35,7 +35,7 @@ async function fail(provider: string, res: Response): Promise<never> {
  * Gemini is a chain of models tried newest first (decisions.md D31).
  * GEMINI_MODEL, if set, replaces the chain; it can be a comma-separated list.
  */
-export const GEMINI_MODELS = (process.env.GEMINI_MODEL || "gemini-3.6-flash,gemini-3.5-flash,gemini-3.8-flash,gemini-flash-lite-latest")
+export const GEMINI_MODELS = (process.env.GEMINI_MODEL || "gemini-3.6-flash,gemini-3.5-flash,gemini-flash-lite-latest,gemini-3.8-flash")
   .split(",")
   .map((m) => m.trim())
   .filter(Boolean);
@@ -115,8 +115,13 @@ const geminiProviders = GEMINI_MODELS.map(gemini);
 
 export function configuredProviders(): Provider[] {
   const list: Provider[] = [];
-  if (process.env.GEMINI_API_KEY) list.push(...geminiProviders);
+  // The last Gemini model in the chain (often the newest, and the most often overloaded on the free tier)
+  // is tried only after Groq, so it can't cost anyone a 15-second timeout first.
+  const gemini = process.env.GEMINI_API_KEY ? geminiProviders : [];
+  const lastResort = gemini.length > 1 ? gemini.slice(-1) : [];
+  list.push(...gemini.slice(0, gemini.length - lastResort.length));
   if (process.env.GROQ_API_KEY) list.push(groq);
+  list.push(...lastResort);
   return list;
 }
 
@@ -124,17 +129,30 @@ export function configuredProviders(): Provider[] {
 const FIRST_CHUNK_MS = 15_000;
 
 /**
- * A model that just failed is skipped for a few minutes, so the next request
- * goes straight to one that's working instead of waiting on the same timeout.
+ * A model that just failed is skipped for a while, so the next request goes
+ * straight to one that's working (decisions.md D31, D41). A busy or slow model
+ * gets 5 minutes; one whose free daily quota is used up is skipped until the
+ * quota resets (Gemini resets at midnight Pacific time).
  */
 const COOLDOWN_MS = 5 * 60_000;
-const failedAt = new Map<Provider, number>();
+const skipUntil = new Map<Provider, number>();
+
+function nextPacificMidnight(now = Date.now()) {
+  // Pacific time is UTC-8 (UTC-7 in summer); using -7 errs towards retrying an hour early, never late.
+  const pacific = new Date(now - 7 * 3600_000);
+  pacific.setUTCHours(24, 0, 0, 0);
+  return pacific.getTime() + 7 * 3600_000;
+}
+
+function markFailed(provider: Provider, error: ProviderError) {
+  skipUntil.set(provider, error.kind === "quota" ? nextPacificMidnight() : Date.now() + COOLDOWN_MS);
+}
 
 function healthyFirst(providers: Provider[]) {
   const now = Date.now();
-  const cooling = (p: Provider) => now - (failedAt.get(p) ?? 0) < COOLDOWN_MS;
-  // Cooling-down providers go last rather than being dropped: if everything failed recently, still try them.
-  return [...providers.filter((p) => !cooling(p)), ...providers.filter(cooling)];
+  const skipped = (p: Provider) => now < (skipUntil.get(p) ?? 0);
+  // Skipped providers go last rather than being dropped: if everything failed recently, still try them.
+  return [...providers.filter((p) => !skipped(p)), ...providers.filter(skipped)];
 }
 
 /**
@@ -174,7 +192,7 @@ export async function* streamWithFallback(
       const cause = (e as { cause?: unknown })?.cause;
       lastError = e instanceof ProviderError ? e : new ProviderError(cause ? `${e} (${cause})` : String(e));
       console.warn(`[ai] ${provider.engine} failed before answering:`, lastError.message.slice(0, 200));
-      if (!req.signal.aborted) failedAt.set(provider, Date.now());
+      if (!req.signal.aborted) markFailed(provider, lastError);
       fallbacks++;
       req.signal.removeEventListener("abort", onAbort);
       continue;
@@ -182,7 +200,7 @@ export async function* streamWithFallback(
       clearTimeout(timer);
     }
     onEngine(provider.engine, { model: provider.model, fallbacks });
-    failedAt.delete(provider);
+    skipUntil.delete(provider);
     try {
       if (!first.done) yield first.value;
       yield* it;
