@@ -85,7 +85,7 @@ export default function Home() {
               Rental agreement
             </Link>
             <Link
-              href="/compare"
+              href="/compare/sample"
               className="rounded-full border border-line bg-card px-3.5 py-1.5 text-ink-2 transition-colors hover:border-line-strong hover:text-ink"
             >
               Insurance comparison

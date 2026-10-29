@@ -1,28 +1,43 @@
 "use client";
 
-import { ArrowUpRight, FileUp, Lock } from "lucide-react";
+import { AlertCircle, ArrowUpRight, FileUp, LoaderCircle, Lock } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { useToast } from "@/components/toast";
+import { ACCEPTED, ExtractError, extractText } from "@/lib/ingest/extract";
+import { createReview, saveReview, TooLongError } from "@/lib/review-store";
 
-const ACCEPT = ".pdf,.docx,.txt,.png,.jpg,.jpeg";
+type Status = { state: "idle" } | { state: "reading"; name: string } | { state: "error"; message: string };
 
 /**
- * Upload bar for the landing page. The whole window accepts drops,
- * so users don't have to aim for the bar.
+ * Upload bar. The whole window accepts drops, so users don't have to aim for the bar.
+ * The file is read in the browser (decisions.md D8) and the review opens as soon
+ * as the text is ready, before any AI call.
  */
 export function DropZone() {
   const router = useRouter();
-  const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [status, setStatus] = useState<Status>({ state: "idle" });
 
-  const handle = (file: File | undefined) => {
-    if (!file) return;
-    // Prototype: real uploads need the backend, so route to the sample flow.
-    toast(`Got ${file.name}. Live analysis comes next, so here is the sample for now`);
-    router.push("/review/sample");
+  const handle = async (file: File | undefined) => {
+    if (!file || status.state === "reading") return;
+    setStatus({ state: "reading", name: file.name });
+    try {
+      const { text, pages } = await extractText(file);
+      const review = createReview(file.name, text, pages);
+      saveReview(review);
+      router.push(`/review/${review.id}`);
+    } catch (e) {
+      const message =
+        e instanceof ExtractError || e instanceof TooLongError
+          ? e.message
+          : "Something went wrong reading that file. Try another copy, or a PDF export.";
+      if (!(e instanceof ExtractError || e instanceof TooLongError)) console.error(e);
+      setStatus({ state: "error", message });
+    } finally {
+      if (input.current) input.current.value = "";
+    }
   };
 
   const onWindowDrop = useEffectEvent(handle);
@@ -61,14 +76,25 @@ export function DropZone() {
     <>
       <div className="rounded-[22px] bg-gradient-to-b from-line-strong/70 to-line/40 p-px shadow-lift">
         <div className="flex items-center gap-3 rounded-[21px] bg-card p-2 pl-4">
-          <FileUp size={20} className="shrink-0 text-ink-3" />
+          {status.state === "reading" ? (
+            <LoaderCircle size={20} className="shrink-0 animate-spin text-mint-ink" />
+          ) : (
+            <FileUp size={20} className="shrink-0 text-ink-3" />
+          )}
           <button
             type="button"
             onClick={() => input.current?.click()}
+            aria-busy={status.state === "reading"}
             className="min-w-0 flex-1 truncate py-2 text-left text-[15px] text-ink-3"
           >
-            <span className="hidden sm:inline">Drop a rental agreement, policy or contract here</span>
-            <span className="sm:hidden">Drop or choose a document</span>
+            {status.state === "reading" ? (
+              <span className="text-ink-2">Reading {status.name}…</span>
+            ) : (
+              <>
+                <span className="hidden sm:inline">Drop a rental agreement, policy or contract here</span>
+                <span className="sm:hidden">Drop or choose a document</span>
+              </>
+            )}
           </button>
           <button
             type="button"
@@ -80,14 +106,36 @@ export function DropZone() {
           </button>
         </div>
       </div>
-      <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-ink-3">
-        <Lock size={12} />
-        PDF, Word or photo · personal details are masked before analysis
-      </p>
+      <AnimatePresence mode="wait" initial={false}>
+        {status.state === "error" ? (
+          <motion.p
+            key="error"
+            role="alert"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="mx-auto mt-3 flex max-w-md items-start justify-center gap-1.5 text-left text-sm leading-snug text-risk-ink"
+          >
+            <AlertCircle size={15} className="mt-0.5 shrink-0" />
+            {status.message}
+          </motion.p>
+        ) : (
+          <motion.p
+            key="hint"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="mt-3 flex items-center justify-center gap-1.5 text-xs text-ink-3"
+          >
+            <Lock size={12} />
+            PDF, Word or text · read on your device, personal details hidden from the AI
+          </motion.p>
+        )}
+      </AnimatePresence>
       <input
         ref={input}
         type="file"
-        accept={ACCEPT}
+        accept={ACCEPTED}
         className="hidden"
         onChange={(e) => handle(e.target.files?.[0])}
       />

@@ -79,11 +79,22 @@ export function ProgressCard({
   );
 }
 
-export function CompletedLine({ clauseCount, seconds }: { clauseCount: number; seconds: number }) {
+export function CompletedLine({
+  clauseCount,
+  seconds,
+  dropped = 0,
+}: {
+  clauseCount: number;
+  seconds: number;
+  dropped?: number;
+}) {
   return (
-    <div className="flex items-center gap-2 text-xs text-paper/70">
-      <BadgeCheck size={15} className="shrink-0 text-mint" />
-      Reviewed {clauseCount} clauses in {seconds}s · every quote checked against your document
+    <div className="flex items-start gap-2 text-xs leading-relaxed text-paper/70">
+      <BadgeCheck size={15} className="mt-px shrink-0 text-mint" />
+      <span>
+        Reviewed {clauseCount} clauses in {seconds}s · every quote checked against your document
+        {dropped > 0 && ` · ${dropped} unverifiable ${dropped === 1 ? "point" : "points"} removed`}
+      </span>
     </div>
   );
 }

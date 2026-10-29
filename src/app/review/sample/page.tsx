@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import { ReviewScreen } from "@/components/review/review-screen";
-import { sampleRental } from "@/lib/samples/rental";
+import { SampleReview } from "@/components/review/sample-review";
 
 export const metadata: Metadata = { title: "Sample rental agreement" };
 
 export default function SampleReviewPage() {
-  return <ReviewScreen analysis={sampleRental} />;
+  return <SampleReview />;
 }
