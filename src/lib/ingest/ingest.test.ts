@@ -57,6 +57,36 @@ describe("splitClauses", () => {
     expect(splitClauses(text).map((c) => c.number)).toEqual(["1", "2", "3"]);
   });
 
+  it("reads model-transcribed scans: markdown headings, and no text lost at 'Rs.'", () => {
+    const scan =
+      "This agreement is made at Jaipur between Shri Mahesh Gupta and Ms. Priya Nair.\n**1. RENT**\nThe Tenant shall pay Rs. 15,000 per month by the 5th.\n**2. SECURITY DEPOSIT**\nA deposit of Rs. 45,000 will be forfeited if the Tenant leaves early.\n**3. ELECTRICITY**\nElectricity shall be charged at Rs. 12 per unit, as decided by the Owner.";
+    const out = splitClauses(scan);
+    expect(out.map((c) => c.number)).toEqual(["¶1", "1", "2", "3"]);
+    expect(out[1]).toMatchObject({ heading: "Rent", text: "The Tenant shall pay Rs. 15,000 per month by the 5th." });
+    expect(out[3].text).toBe("Electricity shall be charged at Rs. 12 per unit, as decided by the Owner.");
+  });
+
+  it("never drops words, whatever the layout", () => {
+    const words = (s: string) =>
+      s
+        .replace(/[*#]/g, " ")
+        .split(/\s+/)
+        .map((w) => w.replace(/[.:,;]+$/, ""))
+        .filter(Boolean);
+    const docs = [
+      RENTAL_TEXT,
+      "The Tenant shall pay Rs. 15,000 per month. Mr. Rao is the Owner. Deposit No. 4 is held. Notice is one month. Repairs are shared.",
+      "Term: eleven months.\n\nRent. The rent is Rs. 9,000.\n\nNOTICE. One month by either party.",
+    ];
+    for (const full of docs) {
+      // A leading title line is shown as the document title, not as a clause.
+      const doc = guessTitle(full) ? full.slice(full.indexOf("\n") + 1) : full;
+      const kept = words(splitClauses(full).map((c) => c.text).join(" "));
+      const headings = splitClauses(full).flatMap((c) => words(c.heading));
+      for (const w of words(doc).filter((w) => !/^\d+(\.\d+)*[.)]?$/.test(w))) expect([...kept, ...headings].some((k) => k.toLowerCase() === w.toLowerCase()), w).toBe(true);
+    }
+  });
+
   it("guesses a title from the first line", () => {
     expect(guessTitle(RENTAL_TEXT)).toBe("Leave and licence agreement");
   });

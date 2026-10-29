@@ -5,10 +5,13 @@ export const MAX_CHARS = 60_000;
 const MIN_CLAUSE_CHARS = 40;
 const MAX_CLAUSE_CHARS = 2_400;
 
-/** Cleans text extracted from PDFs and Word files. */
+/** Cleans text extracted from PDFs, Word files and scans. */
 export function normalizeText(raw: string): string {
   return raw
     .replace(/\r\n?/g, "\n")
+    // Scans are transcribed by a model, which may add markdown: "**1. RENT**", "## Clause 4".
+    .replace(/\*\*|__/g, "")
+    .replace(/^#{1,6}\s+/gm, "")
     .replace(/ /g, " ")
     .replace(/[ \t]+/g, " ")
     .replace(/(\w)-\n(\w)/g, "$1$2") // words hyphenated across lines
@@ -30,11 +33,28 @@ function looksLikeHeading(text: string) {
   return words <= 8 && !/[.;:,]$/.test(text) && /^[A-Z(]/.test(text);
 }
 
+// Abbreviations whose full stop doesn't end a sentence (or a heading).
+const ABBREVIATION = /\b(?:Rs|No|Nos|Mr|Mrs|Ms|Dr|Smt|Shri|Sh|Sr|Jr|St|Co|Ltd|Pvt|vs|etc|viz|approx|i\.e|e\.g)$/i;
+
+const SMALL_WORDS = new Set(["a", "an", "and", "for", "in", "of", "on", "or", "the", "to", "&"]);
+
+/** "SECURITY DEPOSIT" or "Security Deposit", not a sentence fragment like "The Tenant shall pay Rs". */
+function isTitleLike(text: string) {
+  if (text === text.toUpperCase() && /[A-Z]/.test(text)) return true;
+  return text.split(/\s+/).every((w, i) => (i > 0 && SMALL_WORDS.has(w.toLowerCase())) || /^[A-Z(]/.test(w));
+}
+
 function headingOf(text: string): { heading: string; body: string } {
   // "Security deposit: The Licensee shall…" / "SECURITY DEPOSIT. The Licensee…"
-  const inline = text.match(/^([A-Z][A-Za-z ,'&/()-]{2,50}?)[:.–]\s+(.{20,})$/);
-  if (inline && looksLikeHeading(inline[1])) return { heading: tidyHeading(inline[1]), body: inline[2] };
-  return { heading: "", body: text };
+  const inline = text.match(/^([A-Z][A-Za-z ,'&/()-]{2,50}?)([:.–])\s+([\s\S]{20,})$/);
+  if (!inline) return { heading: "", body: text };
+  const [, candidate, separator, rest] = inline;
+  // A colon is a strong heading signal; a full stop only counts after a title-like phrase.
+  const ok =
+    looksLikeHeading(candidate) &&
+    !ABBREVIATION.test(candidate) &&
+    (separator === ":" || separator === "–" || isTitleLike(candidate));
+  return ok ? { heading: tidyHeading(candidate), body: rest } : { heading: "", body: text };
 }
 
 function tidyHeading(h: string) {
@@ -74,11 +94,25 @@ function splitNumbered(text: string): Block[] | null {
   return numberedStarts >= 3 ? blocks : null;
 }
 
+/** Sentences, without breaking after "Rs.", "No.", "Mr." and similar. Joining the result gives back the input. */
+function splitSentences(text: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  for (const m of text.matchAll(/[.!?]+\s+/g)) {
+    const end = m.index! + m[0].length;
+    if (ABBREVIATION.test(text.slice(start, m.index!))) continue;
+    out.push(text.slice(start, end));
+    start = end;
+  }
+  if (start < text.length) out.push(text.slice(start));
+  return out;
+}
+
 /** Fallback: paragraphs, or groups of sentences when the text has no paragraph breaks. */
 function splitParagraphs(text: string): Block[] {
   let parts = text.split(/\n\n+/).map((p) => p.replace(/\n/g, " ").trim()).filter(Boolean);
   if (parts.length < 3) {
-    const sentences = text.replace(/\n/g, " ").match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g) ?? [text];
+    const sentences = splitSentences(text.replace(/\n/g, " "));
     parts = [];
     let buf = "";
     for (const s of sentences) {
@@ -148,14 +182,16 @@ export function splitClauses(raw: string): Clause[] {
   }
   if (pendingHeading) merged.push({ ...pendingHeading, body: pendingHeading.heading });
 
-  // Tiny unnumbered fragments ("Signed:") join the clause before them. A tiny fragment
-  // before the first clause is the document title, which is shown separately.
+  // Tiny unnumbered fragments ("Signed:") join the clause before them, keeping their heading
+  // word. Only a title line before the first clause is dropped; it's shown as the document title.
   const folded: typeof merged = [];
   for (const m of merged) {
     const tiny = !m.number && m.body.length < MIN_CLAUSE_CHARS;
+    const isTitle = tiny && !m.heading && folded.length === 0 && merged.length > 1 && looksLikeHeading(m.body);
+    if (isTitle) continue;
     if (tiny && folded.length) {
-      folded[folded.length - 1].body += `\n${m.body}`;
-    } else if (!tiny || merged.length === 1) {
+      folded[folded.length - 1].body += `\n${m.heading ? `${m.heading}. ` : ""}${m.body}`;
+    } else {
       folded.push(m);
     }
   }

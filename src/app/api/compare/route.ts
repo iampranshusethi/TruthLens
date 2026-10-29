@@ -18,14 +18,15 @@ export async function POST(request: Request) {
   if (!engine) return errorResponse("not_configured", "Live comparisons aren't switched on yet.", 503);
   const { providers, demo } = engine;
 
-  const key = cacheKey(["compare", demo, req]);
+  const { system, user } = comparePrompt(req);
+  // The prompt is part of the key, so improving it never serves stale cached comparisons.
+  const key = cacheKey(["compare", demo, system, user]);
   if (!isCached(key) && !demo && rateLimited(request)) {
     return errorResponse("rate_limited", "You've run a lot of comparisons this hour. Try again in a little while.", 429);
   }
 
   return ndjsonStream(request, key, (signal, used) => {
     used.current = demo ? "demo" : "gemini";
-    const { system, user } = comparePrompt(req);
     const text = demo
       ? demoCompareModel(req)
       : streamWithFallback(providers, { system, messages: [{ role: "user", text: user }], maxTokens: 6000, signal }, (e) => (used.current = e));

@@ -66,7 +66,9 @@ LiveReview reads the record                      (components/review/live-review.
 API route                                        (app/api/review/route.ts)
   → zod validation → pickEngine() → rate limit (cache hits skip it)
   → reviewPrompt(req)                            (ai/prompt.ts)
-  → streamWithFallback(Gemini → Groq)            (ai/providers.ts, through http.ts)
+  → streamWithFallback                            (ai/providers.ts, through http.ts)
+       Gemini models in order, then Groq; skips models that failed in the last 5 minutes;
+       each attempt cancelled if it hasn't started answering within 15 s (D31)
   → reviewEvents(req, text)                      (ai/review.ts)
        jsonLines: model text → JSON objects
        meta → event; finding → zod → clause exists? → locateQuote() → event (or counted as dropped)

@@ -95,8 +95,8 @@ A log of meaningful decisions made while building TruthLens v2, with the reasoni
 **Trade-off accepted:** The model occasionally wraps output in code fences or adds prose; the parser ignores anything that isn't a valid line.
 
 ## D19. Route server-side AI calls through the system proxy in development
-**Decision:** If `HTTPS_PROXY` is set, server calls to Gemini and Groq go through it (via undici's `ProxyAgent`).
-**Why:** The development network only allows outbound traffic through a proxy, and Node's built-in `fetch` ignores proxy settings. On Vercel no proxy is set, so this code path is skipped.
+**Decision:** If `DEV_PROXY` (in `.env.local`) or `HTTPS_PROXY` is set, server calls to Gemini and Groq go through it (via undici's `ProxyAgent`). If the proxy itself can't be reached, the call is retried directly.
+**Why:** The development network only allows outbound traffic through a proxy, and Node's built-in `fetch` ignores proxy settings. A dev server started by a tool doesn't always inherit the system's proxy variables, hence the explicit `DEV_PROXY`. The direct retry keeps things working off that network. On Vercel no proxy is set, so this code path is skipped.
 **Trade-off accepted:** One small extra dependency (`undici`).
 
 ## D20. Reviews are saved in the browser first
@@ -153,3 +153,23 @@ A log of meaningful decisions made while building TruthLens v2, with the reasoni
 **Decision:** A share image (`opengraph-image.tsx`, prerendered at build time with Geist) and an SVG favicon of the lens mark replace the framework defaults; unknown URLs get a branded 404.
 **Why:** The link will be posted on LinkedIn; the preview card is most people's first impression.
 **Trade-off accepted:** None meaningful.
+
+## D31. A chain of models, a timeout on every attempt, and a short cooldown
+**Decision:** Gemini is a list of models tried in order (default `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.8-flash`, `gemini-flash-lite-latest`), then Groq's `openai/gpt-oss-120b`. Any attempt that errors or hasn't started answering within 15 seconds is cancelled and the next one is tried. A model that fails is skipped for 5 minutes. Gemini 3 models run with low thinking so findings start streaming quickly. Scans use the same chain.
+**Why:** First real tests showed every failure mode at once: the newest models answered "experiencing high demand", `gemini-flash-latest` accepted the request and then never replied (so a review hung forever with no fallback), `gemini-2.5-flash` was no longer offered to new keys, and Groq had retired `llama-3.3-70b-versatile`. A single hard-coded model is not viable on free tiers. With the chain, a review's first finding arrives in about 7 seconds and the whole review takes about 16.
+**Trade-off accepted:** In the worst case a user waits through a 15-second timeout before the next model answers. The order puts the models that responded fastest in testing first; `GEMINI_MODEL` can override it without a code change.
+
+## D32. "What's normal" is qualitative, taught by example
+**Decision:** The prompt forbids "typical" numeric ranges and city-specific norms in benchmarks, says to call a one-sided term "common, but negotiable" when it is common, and shows one bad and one good example.
+**Why:** In real reviews the model stated confident but wrong norms ("lock-ins are typically 1 to 6 months", when 11-month lock-ins are common in Mumbai). A hedging instruction alone didn't stop it; a concrete bad/good pair did. A wrong benchmark misleads exactly the user TruthLens exists to protect.
+**Trade-off accepted:** Benchmarks are less specific. They describe what a fair version looks like rather than quoting market statistics.
+
+## D33. The clause splitter must never lose a word
+**Decision:** Markdown that a model adds when transcribing scans (`**1. RENT**`) is stripped before splitting. A phrase only becomes a heading if it ends with a colon or looks like a title ("SECURITY DEPOSIT", "Security Deposit"), never a sentence fragment. Sentences don't break after abbreviations like "Rs.", "No." or "Mr.". Short fragments are merged into the previous clause with their heading. A test checks that every word of several layouts survives splitting.
+**Why:** The first scanned agreement lost "The Tenant shall pay Rs." (mistaken for a heading) and a whole electricity clause, so the review silently skipped a clause that turned out to be a risk. Losing text is worse than splitting untidily.
+**Trade-off accepted:** Some real headings written in sentence case after a full stop ("Security deposit. The tenant…") stay in the clause text instead of becoming the heading.
+
+## D34. Cache keys include the prompt
+**Decision:** The server's cache of finished streams is keyed by the full prompt (system and user), not just the document.
+**Why:** While tuning, an improved prompt kept returning the old cached answer for the same document. Keying by prompt means a prompt change takes effect immediately everywhere.
+**Trade-off accepted:** Changing the prompt invalidates every cached review, which costs quota once per document.

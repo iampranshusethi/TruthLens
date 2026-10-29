@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { httpFetch } from "@/lib/ai/http";
+import { GEMINI_MODELS } from "@/lib/ai/providers";
 import { errorResponse, rateLimited } from "@/lib/ai/route-utils";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 // One page per request keeps each upload well under Vercel's 4.5 MB body limit.
 const ocrRequest = z.object({
@@ -11,7 +12,7 @@ const ocrRequest = z.object({
 });
 
 const PROMPT =
-  "Transcribe all the text on this page of a legal document exactly as written. Keep clause numbers, headings and paragraph breaks. Do not summarise, translate, correct or add anything. If the page has no readable text, reply with nothing.";
+  "Transcribe all the text on this page of a legal document exactly as written, as plain text with no markdown or formatting symbols. Keep clause numbers, headings and paragraph breaks, with a blank line between clauses. Do not summarise, translate, correct or add anything. If the page has no readable text, reply with nothing.";
 
 /** Reads one page image of a scanned document (decisions.md D25). Gemini only: it reads images well. */
 export async function POST(request: Request) {
@@ -24,22 +25,30 @@ export async function POST(request: Request) {
     return errorResponse("rate_limited", "That's a lot of scanned pages this hour. Try again in a little while.", 429);
   }
 
-  const model = process.env.GEMINI_MODEL || "gemini-flash-latest";
-  const res = await httpFetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: "POST",
-    signal: request.signal,
-    headers: { "content-type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
-    body: JSON.stringify({
-      contents: [
-        { role: "user", parts: [{ inlineData: { mimeType: parsed.data.mime, data: parsed.data.image } }, { text: PROMPT }] },
-      ],
-      generationConfig: { temperature: 0, maxOutputTokens: 4096 },
-    }),
-  }).catch(() => null);
+  // Same model chain as reviews (decisions.md D31): move on when a model is busy, retired or slow.
+  let res: Response | null = null;
+  let lastStatus = 0;
+  for (const model of GEMINI_MODELS) {
+    if (request.signal.aborted) break;
+    res = await httpFetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]),
+      headers: { "content-type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
+      body: JSON.stringify({
+        contents: [
+          { role: "user", parts: [{ inlineData: { mimeType: parsed.data.mime, data: parsed.data.image } }, { text: PROMPT }] },
+        ],
+        generationConfig: { temperature: 0, maxOutputTokens: 4096 },
+      }),
+    }).catch(() => null);
+    if (res?.ok) break;
+    lastStatus = res?.status ?? 0;
+    console.warn(`[ocr] ${model} failed:`, lastStatus || "no response");
+    res = null;
+  }
 
-  if (!res?.ok) {
-    console.error("[ocr] failed:", res?.status, await res?.text().catch(() => ""));
-    return res?.status === 429
+  if (!res) {
+    return lastStatus === 429
       ? errorResponse("quota", "TruthLens has used today's free AI allowance. Please try again later.", 429)
       : errorResponse("unavailable", "The scan couldn't be read just now. Try again in a moment.", 502);
   }

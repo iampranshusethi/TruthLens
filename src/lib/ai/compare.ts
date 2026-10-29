@@ -54,7 +54,7 @@ Rules for rows:
 - Pick topics that genuinely differ between the documents or matter most to the reader. Use the same topic for every document.
 - priority: one id from this list that the topic affects: ${priorities.map((p) => `${p.id} (${p.label})`).join(", ")}.
 - Every document id must have a cell in every row.
-- value: at most 8 words, plain English, with the real number from the document.
+- value: at most 8 words, plain English, with the real number from the document. Write money as ₹ with Indian digit grouping.
 - score: 0 to 10 from the reader's point of view; 10 is best for them. Score documents relative to each other.
 - quote: 4 to 20 consecutive words copied EXACTLY from that document, character for character. Quotes are checked automatically. If the document doesn't mention the topic, set value to "Not stated", score 3, and leave quote out.
 

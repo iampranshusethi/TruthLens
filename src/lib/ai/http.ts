@@ -2,16 +2,29 @@ import "server-only";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
 
 /**
- * fetch that honours HTTPS_PROXY (decisions.md D19). Node's built-in fetch
- * ignores proxy settings, which breaks every outbound call on networks that
- * only allow traffic through a proxy. Without a proxy this is plain fetch.
+ * fetch that honours a proxy (decisions.md D19). Node's built-in fetch ignores
+ * proxy settings, which breaks every outbound call on networks that only allow
+ * traffic through one. DEV_PROXY (set in .env.local) wins over the inherited
+ * HTTPS_PROXY. Without a proxy this is plain fetch.
  */
-const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
-const dispatcher = proxyUrl ? new ProxyAgent(proxyUrl) : undefined;
+const proxyUrl =
+  process.env.DEV_PROXY ||
+  process.env.HTTPS_PROXY ||
+  process.env.https_proxy ||
+  process.env.HTTP_PROXY ||
+  process.env.http_proxy;
+const dispatcher = proxyUrl ? new ProxyAgent({ uri: proxyUrl, connectTimeout: 5000 }) : undefined;
 
-export function httpFetch(url: string, init: RequestInit & { signal?: AbortSignal }): Promise<Response> {
+export async function httpFetch(url: string, init: RequestInit & { signal?: AbortSignal }): Promise<Response> {
   if (!dispatcher) return fetch(url, init);
-  return undiciFetch(url, { ...(init as object), dispatcher }) as unknown as Promise<Response>;
+  try {
+    return (await undiciFetch(url, { ...(init as object), dispatcher })) as unknown as Response;
+  } catch (e) {
+    // The proxy itself is unreachable (for example, off the network that needs it): go direct.
+    if (init.signal?.aborted) throw e;
+    console.warn(`[http] proxy ${proxyUrl} failed, retrying directly:`, (e as { cause?: unknown }).cause ?? e);
+    return fetch(url, init);
+  }
 }
 
 /** Yields the `data:` payloads of a server-sent-events response body. */
