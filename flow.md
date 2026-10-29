@@ -146,6 +146,16 @@ Verdict card "Download PDF report" → printReport(title)   (components/review/r
   → print CSS hides the app (print:hidden) and shows <Report> (print:block) → "Save as PDF"
 ```
 
+## Flow 9: daily limits
+
+```
+Upload areas → useQuota() → GET /api/quota (session token + tl_device cookie) → { remaining }   (components/quota.tsx)
+  remaining 0 → LimitNotice (sign in, or come back tomorrow) instead of reading the file
+POST /api/review or /api/compare → reserveGeneration (lib/ai/route-utils.ts → lib/quota.ts)
+  cached or demo → free; else rpc take_generation(subject, day, limit) → null = limit reached → 429
+  run fails with no findings → rpc return_generation (gives the turn back) (D39)
+```
+
 ## Flow 8: usage stats
 
 ```

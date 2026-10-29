@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { configuredProviders, type Provider, ProviderError } from "@/lib/ai/providers";
+import { LIMIT_MESSAGE, takeGeneration } from "@/lib/quota";
 import { recordEvent, type UsageEvent } from "@/lib/server-db";
 import type { Engine, ReviewErrorCode } from "@/lib/types";
 
@@ -23,10 +24,10 @@ const CACHE_SIZE = 40;
 
 export const cacheKey = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
-export function errorResponse(code: ReviewErrorCode, message: string, status: number) {
+export function errorResponse(code: ReviewErrorCode, message: string, status: number, headers: Record<string, string> = {}) {
   return new Response(`${JSON.stringify({ type: "error", code, message })}\n`, {
     status,
-    headers: { "content-type": "application/x-ndjson" },
+    headers: { "content-type": "application/x-ndjson", ...headers },
   });
 }
 
@@ -67,6 +68,8 @@ export function ndjsonStream(
   key: string,
   usage: Pick<UsageEvent, "type" | "kind">,
   produce: (signal: AbortSignal, engine: EngineInfo) => AsyncIterable<object>,
+  /** Called once with the run's summary, e.g. to give back a daily generation after a failure. */
+  onFinish?: (summary: UsageEvent) => Promise<void> | void,
 ) {
   const encoder = new TextEncoder();
   const line = (e: object) => encoder.encode(`${JSON.stringify(e)}\n`);
@@ -108,7 +111,9 @@ export function ndjsonStream(
       }
       controller.close();
       // After the user has everything: record one anonymous event for the stats page.
-      if (engine.current !== "demo") await recordEvent(summarise(events, usage, engine, startedAt, false));
+      const summary = summarise(events, usage, engine, startedAt, false);
+      await onFinish?.(summary);
+      if (engine.current !== "demo") await recordEvent(summary);
     },
     cancel() {
       abort.abort();
@@ -125,3 +130,26 @@ export function ndjsonStream(
 }
 
 export const isCached = (key: string) => cache.has(key);
+
+/**
+ * Takes one of the caller's daily generations before an AI run (decisions.md D39).
+ * Cached results and the offline demo are free. Returns an error response when
+ * the limit is reached, or what the route needs to finish: a way to give the
+ * generation back if the run fails, and a device cookie to set.
+ */
+export async function reserveGeneration(
+  request: Request,
+  free: boolean,
+): Promise<Response | { release: (summary: UsageEvent) => Promise<void>; headers: Record<string, string> }> {
+  if (free) return { release: async () => {}, headers: {} };
+  const check = await takeGeneration(request);
+  const headers: Record<string, string> = check.cookie ? { "set-cookie": check.cookie } : {};
+  if (!check.ok) return errorResponse(check.code, LIMIT_MESSAGE[check.code], 429, headers);
+  return {
+    headers,
+    // A run that failed before producing anything shouldn't cost the user a turn.
+    release: async (summary) => {
+      if (!summary.ok && !summary.findings) await check.release();
+    },
+  };
+}

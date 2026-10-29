@@ -1,6 +1,7 @@
 import { ArrowUpRight, BadgeCheck, Gauge, LockKeyhole, ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Avatar } from "@/components/avatar";
 import { DEVELOPER, PROJECTS } from "@/lib/about";
 
 export const metadata: Metadata = {
@@ -50,18 +51,11 @@ function LinkedInIcon() {
 }
 
 export default function AboutPage() {
-  const initials = DEVELOPER.name
-    .split(" ")
-    .map((w) => w[0])
-    .join("");
-
   return (
     <main className="mx-auto w-full max-w-3xl px-4 pt-12 pb-20 sm:px-6 sm:pt-16">
       {/* Developer */}
       <section className="text-center">
-        <span className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-mint-soft font-display text-2xl text-mint-ink ring-4 ring-card">
-          {initials}
-        </span>
+        <Avatar src={DEVELOPER.photo} name={DEVELOPER.name} size={96} />
         <p className="mt-6 text-xs font-medium tracking-[0.14em] text-mint-ink uppercase">About</p>
         <h1 className="mt-3 font-display text-[2.4rem] leading-[1.02] sm:text-[3.2rem]">
           Built by <span className="hl">{DEVELOPER.name}</span>

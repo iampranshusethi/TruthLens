@@ -2,7 +2,7 @@ import { demoModel } from "@/lib/ai/demo";
 import { streamWithFallback } from "@/lib/ai/providers";
 import { reviewPrompt } from "@/lib/ai/prompt";
 import { reviewEvents } from "@/lib/ai/review";
-import { cacheKey, errorResponse, isCached, ndjsonStream, pickEngine, rateLimited } from "@/lib/ai/route-utils";
+import { cacheKey, errorResponse, isCached, ndjsonStream, pickEngine, rateLimited, reserveGeneration } from "@/lib/ai/route-utils";
 import { reviewRequest } from "@/lib/ai/schema";
 
 // Free tiers can take a while on long documents.
@@ -29,11 +29,24 @@ export async function POST(request: Request) {
     return errorResponse("rate_limited", "You've reviewed a lot of documents this hour. Try again in a little while.", 429);
   }
 
-  return ndjsonStream(request, key, { type: "review", kind: req.kind }, (signal, used) => {
-    used.current = demo ? "demo" : "gemini";
-    const text = demo
-      ? demoModel(req)
-      : streamWithFallback(providers, { system, messages: [{ role: "user", text: user }], maxTokens: 8192, signal }, (e, info) => Object.assign(used, { current: e, ...info }));
-    return reviewEvents(req, text, () => used.current);
-  });
+  const generation = await reserveGeneration(request, demo || isCached(key));
+  if (generation instanceof Response) return generation;
+
+  const response = ndjsonStream(
+    request,
+    key,
+    { type: "review", kind: req.kind },
+    (signal, used) => {
+      used.current = demo ? "demo" : "gemini";
+      const text = demo
+        ? demoModel(req)
+        : streamWithFallback(providers, { system, messages: [{ role: "user", text: user }], maxTokens: 8192, signal }, (e, info) =>
+            Object.assign(used, { current: e, ...info }),
+          );
+      return reviewEvents(req, text, () => used.current);
+    },
+    generation.release,
+  );
+  for (const [k, v] of Object.entries(generation.headers)) response.headers.set(k, v);
+  return response;
 }

@@ -1,11 +1,18 @@
 "use client";
 
+import { supabase } from "@/lib/cloud";
 import { type MaskMap, unmaskDeep } from "@/lib/ingest/mask";
 import type { StoredComparison } from "@/lib/compare-store";
 import { maskClauses, type StoredReview } from "@/lib/review-store";
 import type { CompareEvent, ReviewEvent } from "@/lib/types";
 
 type StreamEvent = { type: string };
+
+/** The signed-in user's token, so the server can apply their daily allowance (decisions.md D39). */
+export async function authHeader(): Promise<Record<string, string>> {
+  const { data } = (await supabase()?.auth.getSession()) ?? { data: { session: null } };
+  return data.session ? { authorization: `Bearer ${data.session.access_token}` } : {};
+}
 
 /**
  * POSTs to an AI route and emits each streamed event, un-masked, as it arrives.
@@ -24,7 +31,7 @@ async function streamEvents<E extends StreamEvent>(
   try {
     res = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...(await authHeader()) },
       body: JSON.stringify(body),
       signal,
     });
@@ -57,6 +64,8 @@ async function streamEvents<E extends StreamEvent>(
     if (signal.aborted) return;
   }
   if (!finished && !signal.aborted) fail("The connection dropped before it finished. Try again.");
+  // The run may have used one of today's generations; let the upload areas refresh their count.
+  window.dispatchEvent(new Event("tl:quota"));
 }
 
 /** Runs a live review of one document. Returns a cancel function. */

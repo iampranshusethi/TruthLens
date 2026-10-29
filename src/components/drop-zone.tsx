@@ -4,10 +4,15 @@ import { AlertCircle, ArrowUpRight, FileUp, LoaderCircle, Lock } from "lucide-re
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { LimitNotice, outOfGenerations, QuotaHint, useQuota } from "@/components/quota";
 import { ACCEPTED, ExtractError, extractText } from "@/lib/ingest/extract";
 import { createReview, saveReview, TooLongError } from "@/lib/review-store";
 
-type Status = { state: "idle" } | { state: "reading"; label: string } | { state: "error"; message: string };
+type Status =
+  | { state: "idle" }
+  | { state: "reading"; label: string }
+  | { state: "error"; message: string }
+  | { state: "limit" };
 
 /**
  * Upload bar. The whole window accepts drops, so users don't have to aim for the bar.
@@ -19,9 +24,16 @@ export function DropZone() {
   const input = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [status, setStatus] = useState<Status>({ state: "idle" });
+  const quota = useQuota();
 
   const handle = async (file: File | undefined) => {
     if (!file || status.state === "reading") return;
+    // Out of reviews for today: say so before reading anything.
+    if (outOfGenerations(quota)) {
+      setStatus({ state: "limit" });
+      if (input.current) input.current.value = "";
+      return;
+    }
     setStatus({ state: "reading", label: `Reading ${file.name}…` });
     try {
       const { text, pages, scanned } = await extractText(file, (label) => setStatus({ state: "reading", label }));
@@ -132,6 +144,11 @@ export function DropZone() {
           </motion.p>
         )}
       </AnimatePresence>
+      {status.state === "limit" && quota ? (
+        <LimitNotice quota={quota} onClose={() => setStatus({ state: "idle" })} />
+      ) : (
+        <QuotaHint quota={quota} />
+      )}
       <input
         ref={input}
         type="file"

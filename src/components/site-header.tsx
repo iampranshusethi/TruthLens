@@ -13,7 +13,7 @@ const NAV = [
   { href: "/", label: "Home", active: (p: string) => p === "/" },
   { href: "/review/sample", label: "Review", active: (p: string) => p.startsWith("/review") },
   { href: "/compare", label: "Compare", active: (p: string) => p.startsWith("/compare") },
-  { href: "/history", label: "Your history", active: (p: string) => p.startsWith("/history") },
+  { href: "/history", label: "Your History", active: (p: string) => p.startsWith("/history") },
   { href: "/about", label: "About", active: (p: string) => p.startsWith("/about") },
 ];
 

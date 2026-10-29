@@ -1,9 +1,10 @@
 "use client";
 
-import { CloudOff, FileDown, FileText, FlaskConical, LockKeyhole, RotateCcw, ScanText } from "lucide-react";
+import { CloudOff, FileDown, FileText, FlaskConical, LockKeyhole, LogIn, RotateCcw, ScanText } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
+import { useAuth } from "@/components/auth";
 import { ChatPanel } from "@/components/review/chat-panel";
 import { printReport, Report } from "@/components/review/report";
 import { FindingDetail } from "@/components/review/finding-detail";
@@ -447,6 +448,8 @@ const ERROR_TITLE: Record<ReviewErrorCode, string> = {
   unavailable: "The review didn't finish",
   too_long: "This document is too long",
   bad_request: "This document couldn't be read",
+  sign_in_required: "Sign in to keep going",
+  daily_limit: "That's today's reviews done",
 };
 
 export function ErrorCard({
@@ -462,7 +465,10 @@ export function ErrorCard({
   onRetry: () => void;
   sample?: { href: string; label: string };
 }) {
-  const canRetry = code === "unavailable" || code === "rate_limited";
+  const { status, signIn } = useAuth();
+  // Once a guest signs in, they have a fresh allowance, so the same document can run again.
+  const needsSignIn = code === "sign_in_required" && status !== "signed-in";
+  const canRetry = code === "unavailable" || code === "rate_limited" || (code === "sign_in_required" && !needsSignIn);
   return (
     <div className="rounded-3xl border border-line bg-card p-6 shadow-soft">
       <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-caution-soft text-caution-ink">
@@ -474,6 +480,15 @@ export function ErrorCard({
         <p className="mt-2 text-sm leading-relaxed text-ink-3">What&apos;s shown was checked before it stopped.</p>
       )}
       <div className="mt-5 flex flex-wrap gap-2">
+        {needsSignIn && (
+          <button
+            type="button"
+            onClick={signIn}
+            className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-medium text-paper transition-transform active:scale-[0.98]"
+          >
+            <LogIn size={15} /> Sign in with Google
+          </button>
+        )}
         {canRetry && (
           <button
             type="button"

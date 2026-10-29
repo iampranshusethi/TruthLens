@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { LimitNotice, outOfGenerations, QuotaHint, useQuota } from "@/components/quota";
 import { createComparison, saveComparison } from "@/lib/compare-store";
 import { ACCEPTED, ExtractError, extractText } from "@/lib/ingest/extract";
 
@@ -20,6 +21,8 @@ export function CompareIntake() {
   const input = useRef<HTMLInputElement>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [hint, setHint] = useState<string | null>(null);
+  const quota = useQuota();
+  const [limited, setLimited] = useState(false);
   const ready = slots.filter((s) => s.state === "ready");
 
   const add = (files: FileList | File[] | null | undefined) => {
@@ -61,6 +64,11 @@ export function CompareIntake() {
   }, []);
 
   const compare = () => {
+    // Out of reviews and comparisons for today: say so before anything is sent.
+    if (outOfGenerations(quota)) {
+      setLimited(true);
+      return;
+    }
     if (ready.length < 2) {
       setHint(slots.some((s) => s.state === "reading") ? "Still reading your files…" : "Add at least two documents to compare.");
       return;
@@ -178,6 +186,7 @@ export function CompareIntake() {
             </motion.p>
           )}
         </AnimatePresence>
+        {limited && quota ? <LimitNotice quota={quota} onClose={() => setLimited(false)} /> : <QuotaHint quota={quota} />}
       </div>
 
       <Link

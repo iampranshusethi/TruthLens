@@ -75,7 +75,15 @@ export interface Stage {
 /** Which engine produced a review. "demo" is the offline stand-in used in development without API keys. */
 export type Engine = "gemini" | "groq" | "demo" | "sample";
 
-export type ReviewErrorCode = "not_configured" | "rate_limited" | "quota" | "unavailable" | "too_long" | "bad_request";
+export type ReviewErrorCode =
+  | "not_configured"
+  | "rate_limited"
+  | "quota"
+  | "unavailable"
+  | "too_long"
+  | "bad_request"
+  | "sign_in_required"
+  | "daily_limit";
 
 /** Events streamed while a review runs (decisions.md D10). The sample replays these from saved data. */
 export type ReviewEvent =

@@ -1,6 +1,6 @@
 import { compareEvents, comparePrompt, compareRequest, demoCompareModel } from "@/lib/ai/compare";
 import { streamWithFallback } from "@/lib/ai/providers";
-import { cacheKey, errorResponse, isCached, ndjsonStream, pickEngine, rateLimited } from "@/lib/ai/route-utils";
+import { cacheKey, errorResponse, isCached, ndjsonStream, pickEngine, rateLimited, reserveGeneration } from "@/lib/ai/route-utils";
 
 export const maxDuration = 60;
 
@@ -25,11 +25,24 @@ export async function POST(request: Request) {
     return errorResponse("rate_limited", "You've run a lot of comparisons this hour. Try again in a little while.", 429);
   }
 
-  return ndjsonStream(request, key, { type: "compare", kind: req.kind }, (signal, used) => {
-    used.current = demo ? "demo" : "gemini";
-    const text = demo
-      ? demoCompareModel(req)
-      : streamWithFallback(providers, { system, messages: [{ role: "user", text: user }], maxTokens: 6000, signal }, (e, info) => Object.assign(used, { current: e, ...info }));
-    return compareEvents(req, text, () => used.current);
-  });
+  const generation = await reserveGeneration(request, demo || isCached(key));
+  if (generation instanceof Response) return generation;
+
+  const response = ndjsonStream(
+    request,
+    key,
+    { type: "compare", kind: req.kind },
+    (signal, used) => {
+      used.current = demo ? "demo" : "gemini";
+      const text = demo
+        ? demoCompareModel(req)
+        : streamWithFallback(providers, { system, messages: [{ role: "user", text: user }], maxTokens: 6000, signal }, (e, info) =>
+            Object.assign(used, { current: e, ...info }),
+          );
+      return compareEvents(req, text, () => used.current);
+    },
+    generation.release,
+  );
+  for (const [k, v] of Object.entries(generation.headers)) response.headers.set(k, v);
+  return response;
 }
