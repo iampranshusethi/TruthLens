@@ -17,9 +17,16 @@ export async function GET(request: Request) {
 
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token) return errorResponse("bad_request", "Sign in to see stats.", 401);
+  // Supabase, not the browser, says whose token this is.
   const { data: auth } = await db.auth.getUser(token);
-  const email = auth.user?.email?.toLowerCase();
-  if (!email || !admins.includes(email)) return errorResponse("bad_request", "This page is private.", 403);
+  const user = auth.user;
+  const email = user?.email?.toLowerCase();
+  // The email must be verified and come from a Google sign-in, so nobody can pass by
+  // registering the admin's address another way (for example email and password).
+  const viaGoogle = user?.identities?.some((i) => i.provider === "google") ?? false;
+  if (!user || !email || !admins.includes(email) || !user.email_confirmed_at || !viaGoogle) {
+    return errorResponse("bad_request", "This page is private.", 403);
+  }
 
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
   const [events, saved, users] = await Promise.all([
