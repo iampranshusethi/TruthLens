@@ -113,8 +113,8 @@ export default function AboutPage() {
           From a 24-hour build to <span className="hl">v2</span>
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-center leading-relaxed text-ink-2">
-          The first TruthLens was put together in a day for a hackathon, and it won. Rebuilding it gave me the time
-          to make it trustworthy.
+          I built the first TruthLens alone in 24 hours for a hackathon, and it placed runner-up. Rebuilding it gave
+          me the time to make it trustworthy.
         </p>
         <div className="mt-10 grid gap-4 sm:grid-cols-2">
           {V2.map(({ icon: Icon, title, body }) => (
@@ -140,25 +140,36 @@ export default function AboutPage() {
       <section className="mt-20">
         <h2 className="text-center font-display text-[1.9rem]">Things I&apos;ve built</h2>
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
-          {PROJECTS.map((p) => (
-            <a
-              key={p.name}
-              href={p.href}
-              target="_blank"
-              rel="noreferrer"
-              className="group flex flex-col rounded-3xl border border-line bg-card p-6 transition-all hover:border-line-strong hover:shadow-soft"
-            >
-              <span className="flex items-center justify-between">
-                <span className="font-display text-xl">{p.name}</span>
-                <ArrowUpRight
-                  size={18}
-                  className="text-ink-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                />
-              </span>
-              <span className="mt-1 text-sm text-mint-ink">{p.tagline}</span>
-              <span className="mt-3 text-sm leading-relaxed text-ink-3">{p.detail}</span>
-            </a>
-          ))}
+          {PROJECTS.map((p, i) => {
+            // The first project is featured across the full width, so the rest pair up evenly.
+            const cls = `group flex flex-col rounded-3xl border border-line bg-card p-6 transition-all ${
+              i === 0 ? "sm:col-span-2" : ""
+            } ${p.href ? "hover:border-line-strong hover:shadow-soft" : ""}`;
+            const body = (
+              <>
+                <span className="flex items-center justify-between">
+                  <span className="font-display text-xl">{p.name}</span>
+                  {p.href && (
+                    <ArrowUpRight
+                      size={18}
+                      className="text-ink-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                    />
+                  )}
+                </span>
+                <span className="mt-1 text-sm text-mint-ink">{p.tagline}</span>
+                <span className="mt-3 text-sm leading-relaxed text-ink-3">{p.detail}</span>
+              </>
+            );
+            return p.href ? (
+              <a key={p.name} href={p.href} target="_blank" rel="noreferrer" className={cls}>
+                {body}
+              </a>
+            ) : (
+              <div key={p.name} className={cls}>
+                {body}
+              </div>
+            );
+          })}
         </div>
       </section>
 
