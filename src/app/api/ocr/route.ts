@@ -2,6 +2,7 @@ import { z } from "zod";
 import { httpFetch } from "@/lib/ai/http";
 import { GEMINI_MODELS } from "@/lib/ai/providers";
 import { errorResponse, rateLimited } from "@/lib/ai/route-utils";
+import { recordEvent } from "@/lib/server-db";
 
 export const maxDuration = 60;
 
@@ -26,10 +27,14 @@ export async function POST(request: Request) {
   }
 
   // Same model chain as reviews (decisions.md D31): move on when a model is busy, retired or slow.
+  const startedAt = Date.now();
   let res: Response | null = null;
   let lastStatus = 0;
+  let used = "";
+  let fallbacks = 0;
   for (const model of GEMINI_MODELS) {
     if (request.signal.aborted) break;
+    used = model;
     res = await httpFetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]),
@@ -45,9 +50,12 @@ export async function POST(request: Request) {
     lastStatus = res?.status ?? 0;
     console.warn(`[ocr] ${model} failed:`, lastStatus || "no response");
     res = null;
+    fallbacks++;
   }
 
+  const usage = { type: "ocr", engine: "gemini", model: used, fallbacks, duration_ms: Date.now() - startedAt } as const;
   if (!res) {
+    await recordEvent({ ...usage, ok: false, error_code: lastStatus === 429 ? "quota" : "unavailable" });
     return lastStatus === 429
       ? errorResponse("quota", "TruthLens has used today's free AI allowance. Please try again later.", 429)
       : errorResponse("unavailable", "The scan couldn't be read just now. Try again in a moment.", 502);
@@ -58,5 +66,6 @@ export async function POST(request: Request) {
     .filter((p) => p.text && !p.thought)
     .map((p) => p.text)
     .join("");
+  await recordEvent({ ...usage, ok: true });
   return Response.json({ text });
 }

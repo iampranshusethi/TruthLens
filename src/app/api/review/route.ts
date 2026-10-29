@@ -29,11 +29,11 @@ export async function POST(request: Request) {
     return errorResponse("rate_limited", "You've reviewed a lot of documents this hour. Try again in a little while.", 429);
   }
 
-  return ndjsonStream(request, key, (signal, used) => {
+  return ndjsonStream(request, key, { type: "review", kind: req.kind }, (signal, used) => {
     used.current = demo ? "demo" : "gemini";
     const text = demo
       ? demoModel(req)
-      : streamWithFallback(providers, { system, messages: [{ role: "user", text: user }], maxTokens: 8192, signal }, (e) => (used.current = e));
+      : streamWithFallback(providers, { system, messages: [{ role: "user", text: user }], maxTokens: 8192, signal }, (e, info) => Object.assign(used, { current: e, ...info }));
     return reviewEvents(req, text, () => used.current);
   });
 }

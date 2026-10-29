@@ -46,7 +46,8 @@ Everything is free-tier. Each step only needs doing once.
    4. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an *OAuth client ID* (type: Web application). Under *Authorized JavaScript origins* add `http://localhost`, `http://localhost:3000` and your deployed address. Under *Authorized redirect URIs* add the callback URL that Supabase shows under *Authentication → Sign In / Providers → Google*. Put the client ID in `.env.local` as `NEXT_PUBLIC_GOOGLE_CLIENT_ID`.
    5. Back in Supabase, enable the Google provider and paste the Google client ID and secret.
    6. Under *Authentication → URL Configuration*, set the Site URL to your deployed address and add `http://localhost:3000/**` and `https://<your-site>/**` to the redirect URLs.
-4. **Deploy on Vercel.** Push the repo to GitHub, then *Add New Project* on [vercel.com](https://vercel.com) and import it. Add the same environment variables from `.env.local`, plus `NEXT_PUBLIC_SITE_URL=https://<your-site>` so link previews use the right address.
+4. **Usage stats (optional).** Run the latest [`supabase.sql`](supabase.sql) again (it's safe to re-run; it adds the `usage_events` table). Add `SUPABASE_SECRET_KEY` (Supabase → Project Settings → API Keys → Secret keys; server-only) and `STATS_ADMIN_EMAIL` (your Google sign-in email) to `.env.local`, then open `/stats` while signed in. Visitor numbers appear in Vercel → Analytics once deployed.
+5. **Deploy on Vercel.** Push the repo to GitHub, then *Add New Project* on [vercel.com](https://vercel.com) and import it. Add the same environment variables from `.env.local`, plus `NEXT_PUBLIC_SITE_URL=https://<your-site>` so link previews use the right address.
 
 ## Stack
 

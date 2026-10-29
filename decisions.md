@@ -183,3 +183,13 @@ A log of meaningful decisions made while building TruthLens v2, with the reasoni
 **Decision:** While signed in, every page load (Supabase's `INITIAL_SESSION`) as well as signing in uploads finished local reviews and comparisons that this browser hasn't uploaded yet. Each browser remembers, per user, which ids it has uploaded (`tl.synced.<user>`), so repeat visits send nothing new.
 **Why:** Testing showed that syncing only at the moment of sign-in leaves gaps: a review finished while the cloud save failed (offline, a closed tab) would stay on one device forever. Retrying on each visit closes that gap at almost no cost.
 **Trade-off accepted:** If a review is deleted on one device, another device that still holds a copy it never uploaded will upload it on its next visit. Copies it had already uploaded are not re-sent.
+
+## D37. Vercel Web Analytics for visitors
+**Decision:** Page views and visitors come from Vercel Web Analytics (free on the Hobby plan, no cookies). Before anything is sent, review and comparison ids in the URL are replaced with `[id]`.
+**Why:** Seeing how many people visit, and which pages they use, is the first question after launch. Replacing ids makes pages group together in the dashboard and keeps even random ids out of a third-party service.
+**Trade-off accepted:** It only works on Vercel deployments, and only counts page views, not what happens inside a review. D38 covers that.
+
+## D38. A private stats page built on anonymous events
+**Decision:** Each review, comparison, chat answer and scanned page records one row in `usage_events`: type, document kind, engine and model, success or error code, duration, finding and dropped counts, fallbacks, and whether it came from cache. Never document text, user ids or IP addresses. The server writes with the Supabase secret key; the table has row-level security with no policies, so browsers can't touch it. `/stats` (not linked anywhere) sends the signed-in user's session token to `/api/stats`, which checks the email against `STATS_ADMIN_EMAIL` before reading. Aggregation is a pure, unit-tested function.
+**Why:** The questions that matter for a free AI product (how fast are reviews, how often a backup model is needed, how often the free quota runs out, what fraction of quotes verify) can only be answered from the server. Keeping the events content-free means the stats can never leak what anyone uploaded.
+**Trade-off accepted:** Recording adds up to 2 seconds of server work after the user already has their result, and stats need one more secret in the server environment. Without it, nothing is recorded and the app works the same.

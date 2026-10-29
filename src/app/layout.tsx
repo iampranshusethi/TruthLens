@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import localFont from "next/font/local";
+import { SiteAnalytics } from "@/components/analytics";
 import { AuthProvider } from "@/components/auth";
 import { SiteHeader } from "@/components/site-header";
 import { ToastProvider } from "@/components/toast";
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <div className="flex flex-1 flex-col">{children}</div>
           </AuthProvider>
         </ToastProvider>
+        <SiteAnalytics />
       </body>
     </html>
   );

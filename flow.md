@@ -146,6 +146,18 @@ Verdict card "Download PDF report" → printReport(title)   (components/review/r
   → print CSS hides the app (print:hidden) and shows <Report> (print:block) → "Save as PDF"
 ```
 
+## Flow 8: usage stats
+
+```
+Any AI route finishes → recordEvent(summary)          (lib/server-db.ts, secret key, through DEV_PROXY in dev)
+  review/compare: summarise(events) in ndjsonStream   (lib/ai/route-utils.ts)
+  chat, ocr: recorded in their routes
+  → usage_events row: counts and timings only (D38)
+/stats → StatsDashboard (components/stats) → GET /api/stats with the session token
+  → server: auth.getUser(token), email in STATS_ADMIN_EMAIL? → last 30 days of rows → summariseEvents (lib/stats.ts)
+Visitors: <SiteAnalytics/> in layout.tsx → Vercel Web Analytics, ids replaced with [id] (D37)
+```
+
 ## Errors
 
 Every stream ends in `done` or `error`. Provider failures before the first chunk fall back to the next provider; failures after it become an `error` event (`quota` or `unavailable`). The browser turns network drops into `error` too, so the screen always ends in a clear state with "Try again" where retrying can help.

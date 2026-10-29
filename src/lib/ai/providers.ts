@@ -17,6 +17,8 @@ export class ProviderError extends Error {
 
 export type Provider = {
   engine: Engine;
+  /** The model id, recorded in usage stats. */
+  model: string;
   /** Streams the model's text output, chunk by chunk. */
   stream: (req: CompletionRequest) => AsyncGenerator<string>;
 };
@@ -40,6 +42,7 @@ export const GEMINI_MODELS = (process.env.GEMINI_MODEL || "gemini-3.6-flash,gemi
 
 const gemini = (model: string): Provider => ({
   engine: "gemini",
+  model,
   async *stream({ system, messages, maxTokens, signal }) {
     // Gemini 3.x thinks before answering by default; "low" gets findings streaming sooner.
     const thinkingLevel = process.env.GEMINI_THINKING_LEVEL || (model.startsWith("gemini-3") ? "low" : undefined);
@@ -80,6 +83,7 @@ const groqModel = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
 const groq: Provider = {
   engine: "groq",
+  model: groqModel,
   async *stream({ system, messages, maxTokens, signal }) {
     const res = await httpFetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -142,9 +146,10 @@ function healthyFirst(providers: Provider[]) {
 export async function* streamWithFallback(
   providers: Provider[],
   req: CompletionRequest,
-  onEngine: (engine: Engine) => void,
+  onEngine: (engine: Engine, info: { model: string; fallbacks: number }) => void,
 ): AsyncGenerator<string> {
   let lastError: ProviderError | null = null;
+  let fallbacks = 0;
   for (const provider of healthyFirst(providers)) {
     if (req.signal.aborted) break;
     // Each attempt gets its own signal, so a slow one can be cancelled without cancelling the request.
@@ -170,12 +175,13 @@ export async function* streamWithFallback(
       lastError = e instanceof ProviderError ? e : new ProviderError(cause ? `${e} (${cause})` : String(e));
       console.warn(`[ai] ${provider.engine} failed before answering:`, lastError.message.slice(0, 200));
       if (!req.signal.aborted) failedAt.set(provider, Date.now());
+      fallbacks++;
       req.signal.removeEventListener("abort", onAbort);
       continue;
     } finally {
       clearTimeout(timer);
     }
-    onEngine(provider.engine);
+    onEngine(provider.engine, { model: provider.model, fallbacks });
     failedAt.delete(provider);
     try {
       if (!first.done) yield first.value;

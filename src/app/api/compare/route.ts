@@ -25,11 +25,11 @@ export async function POST(request: Request) {
     return errorResponse("rate_limited", "You've run a lot of comparisons this hour. Try again in a little while.", 429);
   }
 
-  return ndjsonStream(request, key, (signal, used) => {
+  return ndjsonStream(request, key, { type: "compare", kind: req.kind }, (signal, used) => {
     used.current = demo ? "demo" : "gemini";
     const text = demo
       ? demoCompareModel(req)
-      : streamWithFallback(providers, { system, messages: [{ role: "user", text: user }], maxTokens: 6000, signal }, (e) => (used.current = e));
+      : streamWithFallback(providers, { system, messages: [{ role: "user", text: user }], maxTokens: 6000, signal }, (e, info) => Object.assign(used, { current: e, ...info }));
     return compareEvents(req, text, () => used.current);
   });
 }

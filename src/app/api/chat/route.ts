@@ -1,6 +1,7 @@
 import { chatPrompt, chatRequest, demoChat } from "@/lib/ai/chat";
 import { ProviderError, streamWithFallback } from "@/lib/ai/providers";
 import { errorResponse, pickEngine, rateLimited } from "@/lib/ai/route-utils";
+import { recordEvent } from "@/lib/server-db";
 
 export const maxDuration = 30;
 
@@ -19,19 +20,25 @@ export async function POST(request: Request) {
   const abort = new AbortController();
   request.signal.addEventListener("abort", () => abort.abort());
   const { system, messages } = chatPrompt(req);
+  const startedAt = Date.now();
+  const used: { engine?: string; model?: string; fallbacks?: number } = {};
   const text = engine.demo
     ? demoChat(req)
-    : streamWithFallback(engine.providers, { system, messages, maxTokens: 700, signal: abort.signal }, () => {});
+    : streamWithFallback(engine.providers, { system, messages, maxTokens: 700, signal: abort.signal }, (e, info) =>
+        Object.assign(used, { engine: e, ...info }),
+      );
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      let errorCode: string | undefined;
       try {
         for await (const chunk of text) controller.enqueue(encoder.encode(chunk));
       } catch (e) {
         if (!abort.signal.aborted) {
           console.error("[chat] failed:", e);
           const quota = e instanceof ProviderError && e.kind === "quota";
+          errorCode = quota ? "quota" : "unavailable";
           controller.enqueue(
             encoder.encode(
               quota
@@ -42,6 +49,9 @@ export async function POST(request: Request) {
         }
       }
       controller.close();
+      if (!engine.demo) {
+        await recordEvent({ type: "chat", kind: req.kind, ...used, ok: !errorCode, error_code: errorCode, duration_ms: Date.now() - startedAt });
+      }
     },
     cancel() {
       abort.abort();

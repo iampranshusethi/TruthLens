@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { configuredProviders, type Provider, ProviderError } from "@/lib/ai/providers";
+import { recordEvent, type UsageEvent } from "@/lib/server-db";
 import type { Engine, ReviewErrorCode } from "@/lib/types";
 
 /* Best-effort, per-instance protection for the free quota. Shared by every AI route. */
@@ -40,27 +41,52 @@ export function pickEngine(): { providers: Provider[]; demo: boolean } | null {
  * Streams events as newline-delimited JSON, caching the full stream on success
  * and turning provider failures into a friendly `error` event.
  */
+/** What produced a stream: set by the route as the model answers, read for usage stats. */
+export type EngineInfo = { current: Engine; model?: string; fallbacks?: number };
+
+/** Summarises a finished stream into one anonymous usage event (decisions.md D38). */
+function summarise(events: object[], usage: Pick<UsageEvent, "type" | "kind">, engine: EngineInfo, startedAt: number, cached: boolean): UsageEvent {
+  const typed = events as { type: string; count?: number; code?: string }[];
+  const error = typed.find((e) => e.type === "error");
+  return {
+    ...usage,
+    engine: engine.current,
+    model: engine.model,
+    fallbacks: engine.fallbacks,
+    ok: !error,
+    error_code: error?.code,
+    duration_ms: Date.now() - startedAt,
+    findings: typed.filter((e) => e.type === "finding" || e.type === "row").length,
+    dropped: typed.find((e) => e.type === "dropped")?.count ?? 0,
+    cached,
+  };
+}
+
 export function ndjsonStream(
   request: Request,
   key: string,
-  produce: (signal: AbortSignal, engine: { current: Engine }) => AsyncIterable<object>,
+  usage: Pick<UsageEvent, "type" | "kind">,
+  produce: (signal: AbortSignal, engine: EngineInfo) => AsyncIterable<object>,
 ) {
   const encoder = new TextEncoder();
   const line = (e: object) => encoder.encode(`${JSON.stringify(e)}\n`);
   const abort = new AbortController();
   request.signal.addEventListener("abort", () => abort.abort());
+  const startedAt = Date.now();
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const cached = cache.get(key);
+      const engine: EngineInfo = { current: "gemini" };
       if (cached) {
         for (const e of cached) controller.enqueue(line(e));
         controller.close();
+        await recordEvent(summarise(cached, usage, { current: "sample", model: "cache" }, startedAt, true));
         return;
       }
       const events: object[] = [];
       try {
-        for await (const e of produce(abort.signal, { current: "gemini" })) {
+        for await (const e of produce(abort.signal, engine)) {
           events.push(e);
           controller.enqueue(line(e));
         }
@@ -70,17 +96,19 @@ export function ndjsonStream(
         if (abort.signal.aborted) return;
         console.error("[ai] stream failed:", e);
         const quota = e instanceof ProviderError && e.kind === "quota";
-        controller.enqueue(
-          line({
-            type: "error",
-            code: quota ? "quota" : "unavailable",
-            message: quota
-              ? "TruthLens has used today's free AI allowance. Please try again later."
-              : "The AI service didn't respond properly. Your document is fine; try again in a moment.",
-          }),
-        );
+        const error = {
+          type: "error",
+          code: quota ? "quota" : "unavailable",
+          message: quota
+            ? "TruthLens has used today's free AI allowance. Please try again later."
+            : "The AI service didn't respond properly. Your document is fine; try again in a moment.",
+        };
+        events.push(error);
+        controller.enqueue(line(error));
       }
       controller.close();
+      // After the user has everything: record one anonymous event for the stats page.
+      if (engine.current !== "demo") await recordEvent(summarise(events, usage, engine, startedAt, false));
     },
     cancel() {
       abort.abort();
