@@ -173,3 +173,8 @@ A log of meaningful decisions made while building TruthLens v2, with the reasoni
 **Decision:** The server's cache of finished streams is keyed by the full prompt (system and user), not just the document.
 **Why:** While tuning, an improved prompt kept returning the old cached answer for the same document. Keying by prompt means a prompt change takes effect immediately everywhere.
 **Trade-off accepted:** Changing the prompt invalidates every cached review, which costs quota once per document.
+
+## D35. Google's own sign-in button instead of the redirect flow
+**Decision:** "Sign in" opens a small TruthLens panel with Google's official "Continue with Google" button (Google Identity Services). Google returns a signed ID token to the page, which passes it to Supabase with `signInWithIdToken`, protected by a one-time nonce (Google signs the hashed nonce into the token; Supabase checks the raw one). If no Google client ID is configured, it falls back to Supabase's redirect flow.
+**Why:** In the redirect flow Google's screen said "Sign in to xxxx.supabase.co", because Google names the site it will send you back to. With the button, Google shows TruthLens's own address (localhost now, the Vercel address once deployed) and the user never leaves the page. Showing the name "TruthLens" itself needs Google brand verification, which needs an owned domain.
+**Trade-off accepted:** The button is styled by Google, not by us, and one more public env var (`NEXT_PUBLIC_GOOGLE_CLIENT_ID`) is needed. Supabase's custom domain add-on would also fix the address, but it isn't free.

@@ -125,7 +125,11 @@ No Gemini key → 503 not_configured → a clear message in the upload bar.
 
 ```
 AuthProvider (components/auth.tsx, in layout.tsx) → supabase() client (lib/cloud.ts), PKCE flow
-Sign in → signInWithOAuth(google) → Google → back to /history → session restored from the URL
+Sign in → SignInDialog (auth.tsx) loads Google Identity Services (lib/google-identity.ts)
+  → createNonce(): raw + SHA-256 hashed → google.accounts.id.initialize({ nonce: hashed }) → renderButton
+  → user picks an account in Google's popup → callback(credential = signed ID token)
+  → supabase.auth.signInWithIdToken({ provider: google, token, nonce: raw }) → session
+  (no NEXT_PUBLIC_GOOGLE_CLIENT_ID: falls back to signInWithOAuth redirect → back to /history)
   → on SIGNED_IN: every finished local review and comparison is upserted (saveToCloud)
 Review/comparison finishes → saveReview/saveComparison (browser) + saveToCloud (account)
 /review/<id> not on this device → loadFromCloud → saved locally → shown

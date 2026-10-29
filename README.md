@@ -43,7 +43,7 @@ Everything is free-tier. Each step only needs doing once.
    1. Create a free project at [supabase.com](https://supabase.com).
    2. In the project, open *SQL Editor*, paste the contents of [`supabase.sql`](supabase.sql) and click *Run*.
    3. In *Project Settings → API*, copy the Project URL and the publishable (anon) key into `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
-   4. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an *OAuth client ID* (type: Web application). Add the redirect URL that Supabase shows under *Authentication → Sign In / Providers → Google*.
+   4. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an *OAuth client ID* (type: Web application). Under *Authorized JavaScript origins* add `http://localhost`, `http://localhost:3000` and your deployed address. Under *Authorized redirect URIs* add the callback URL that Supabase shows under *Authentication → Sign In / Providers → Google*. Put the client ID in `.env.local` as `NEXT_PUBLIC_GOOGLE_CLIENT_ID`.
    5. Back in Supabase, enable the Google provider and paste the Google client ID and secret.
    6. Under *Authentication → URL Configuration*, set the Site URL to your deployed address and add `http://localhost:3000/**` and `https://<your-site>/**` to the redirect URLs.
 4. **Deploy on Vercel.** Push the repo to GitHub, then *Add New Project* on [vercel.com](https://vercel.com) and import it. Add the same environment variables from `.env.local`, plus `NEXT_PUBLIC_SITE_URL=https://<your-site>` so link previews use the right address.
