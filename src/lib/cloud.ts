@@ -29,15 +29,53 @@ async function signedIn(): Promise<SupabaseClient | null> {
   return data.session ? sb : null;
 }
 
+/* Which items this browser has already uploaded, per user, so syncing only sends what's missing. */
+const SYNCED = (userId: string) => `tl.synced.${userId}`;
+
+function syncedIds(userId: string): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(SYNCED(userId)) ?? "[]") as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function markSynced(userId: string, id: string) {
+  try {
+    const ids = syncedIds(userId);
+    ids.add(id);
+    localStorage.setItem(SYNCED(userId), JSON.stringify([...ids].slice(-200)));
+  } catch {}
+}
+
 /** Saves a finished review or comparison to the signed-in user's account. Silently does nothing when signed out. */
 export async function saveToCloud(type: Row["type"], item: StoredReview | StoredComparison) {
-  const sb = await signedIn();
-  if (!sb) return;
+  const sb = supabase();
+  const { data } = (await sb?.auth.getSession()) ?? { data: { session: null } };
+  const userId = data.session?.user.id;
+  if (!sb || !userId) return;
   const title = type === "review" ? (item as StoredReview).result?.title ?? (item as StoredReview).title : (item as StoredComparison).result?.title ?? "Comparison";
   const { error } = await sb
     .from("saved_items")
     .upsert({ id: item.id, type, title, data: item, created_at: new Date(item.createdAt).toISOString() });
   if (error) console.warn("[cloud] save failed:", error.message);
+  else markSynced(userId, item.id);
+}
+
+/**
+ * Uploads finished local items the account doesn't have yet (decisions.md D36).
+ * Runs on sign-in and on every visit while signed in, so a save that failed
+ * (offline, a closed tab) is retried later instead of being lost.
+ */
+export async function syncToCloud(items: { type: Row["type"]; item: StoredReview | StoredComparison }[]) {
+  const sb = supabase();
+  const { data } = (await sb?.auth.getSession()) ?? { data: { session: null } };
+  const userId = data.session?.user.id;
+  if (!sb || !userId) return 0;
+  const done = syncedIds(userId);
+  const pending = items.filter(({ item }) => !done.has(item.id));
+  for (const { type, item } of pending) await saveToCloud(type, item);
+  return pending.length;
 }
 
 export async function listCloud(): Promise<Row[]> {

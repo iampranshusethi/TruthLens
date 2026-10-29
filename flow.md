@@ -130,7 +130,8 @@ Sign in → SignInDialog (auth.tsx) loads Google Identity Services (lib/google-i
   → user picks an account in Google's popup → callback(credential = signed ID token)
   → supabase.auth.signInWithIdToken({ provider: google, token, nonce: raw }) → session
   (no NEXT_PUBLIC_GOOGLE_CLIENT_ID: falls back to signInWithOAuth redirect → back to /history)
-  → on SIGNED_IN: every finished local review and comparison is upserted (saveToCloud)
+  → on SIGNED_IN and on every visit while signed in (INITIAL_SESSION): syncToCloud uploads finished local items
+    this browser hasn't uploaded yet (ids tracked in tl.synced.<user>) (D36)
 Review/comparison finishes → saveReview/saveComparison (browser) + saveToCloud (account)
 /review/<id> not on this device → loadFromCloud → saved locally → shown
 History → local items + listCloud(), de-duplicated by id; delete removes both copies

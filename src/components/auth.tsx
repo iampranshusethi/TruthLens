@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { createContext, useContext, useEffect, useEffectEvent, useRef, useState } from "react";
 import { LogoMark } from "@/components/logo";
 import { useToast } from "@/components/toast";
-import { saveToCloud, supabase } from "@/lib/cloud";
+import { supabase, syncToCloud } from "@/lib/cloud";
 import { createNonce, googleClientId, loadGoogleIdentity } from "@/lib/google-identity";
 import { listComparisons } from "@/lib/compare-store";
 import { listReviews } from "@/lib/review-store";
@@ -28,10 +28,16 @@ function toUser(u: User): Auth["user"] {
   return { name: m.full_name ?? m.name ?? u.email ?? "You", email: u.email ?? "", avatar: m.avatar_url ?? m.picture };
 }
 
-/** Uploads reviews made before signing in, so history follows the user. */
-async function syncLocal() {
-  for (const r of listReviews()) if (r.result) await saveToCloud("review", r);
-  for (const c of listComparisons()) if (c.result) await saveToCloud("compare", c);
+/** Uploads finished reviews the account doesn't have yet, so history follows the user. */
+function syncLocal() {
+  return syncToCloud([
+    ...listReviews()
+      .filter((r) => r.result)
+      .map((item) => ({ type: "review" as const, item })),
+    ...listComparisons()
+      .filter((c) => c.result)
+      .map((item) => ({ type: "compare" as const, item })),
+  ]);
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -45,7 +51,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data } = sb.auth.onAuthStateChange((event, session) => {
       setUser(session ? toUser(session.user) : null);
       setStatus(session ? "signed-in" : "signed-out");
-      if (event === "SIGNED_IN") syncLocal();
+      // On sign-in, and on every visit while signed in, upload anything not yet in the account.
+      if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) syncLocal();
     });
     return () => data.subscription.unsubscribe();
   }, [sb]);
