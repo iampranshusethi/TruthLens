@@ -6,7 +6,9 @@
 export const DEVELOPER = {
   name: "Pranshu Sethi",
   /** Profile photo URL (LinkedIn). If it ever fails to load, initials are shown instead. */
-  photo: "",
+  // LinkedIn photo links are signed and expire (this one on 19 Nov 2026); a copy in /public would last.
+  photo:
+    "https://media.licdn.com/dms/image/v2/D5603AQFFLV9BUgWcJA/profile-displayphoto-crop_800_800/B56aCgzYgpG0AM-/0/1789404222069?e=1795046400&v=beta&t=NyLBd9Wx6P2uLV0LvgOJvC2s-hvkYxL2LpYqbKvco-0",
   headline: "B.Tech IT at IIIT Allahabad · AI and software engineering",
   intro:
     "I build AI products for people who usually get left out of software: tenants signing their first agreement, a milkman who'd rather speak than type. TruthLens began as a solo 24-hour hackathon build in my first year at IIIT Allahabad. I rebuilt it from scratch to see how far careful engineering could take the idea.",
